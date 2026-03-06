@@ -1,0 +1,1276 @@
+#!/usr/bin/env python3
+"""
+Основные обработчики команд Telegram бота
+"""
+
+import logging
+from datetime import datetime
+from typing import Optional
+
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import ContextTypes, CommandHandler, CallbackQueryHandler
+
+from config.settings import (
+    get_pve_servers,
+    get_pbs_servers,
+    get_infrastructure_servers,
+    get_application_servers,
+    get_virtual_machines,
+    SERVERS,
+    get_ssh_command
+)
+from bot.language import language_manager, get_text, get_language_name
+from utils.version import get_version as get_version_info
+from config.languages import LANGUAGE_NAMES
+from checks.servers import get_server_checker
+
+logger = logging.getLogger(__name__)
+
+
+def get_user_id(update: Update) -> int:
+    """Получить ID пользователя из обновления"""
+    if update.callback_query:
+        return update.callback_query.from_user.id
+    elif update.message:
+        return update.message.from_user.id
+    elif update.effective_user:
+        return update.effective_user.id
+    else:
+        raise ValueError("Не удалось получить ID пользователя")
+
+
+async def send_or_edit_message(update: Update, text: str, parse_mode: str = "Markdown",
+                               reply_markup: Optional[InlineKeyboardMarkup] = None) -> None:
+    """Отправить или редактировать сообщение"""
+    try:
+        if update.callback_query:
+            await update.callback_query.edit_message_text(
+                text=text,
+                parse_mode=parse_mode,
+                reply_markup=reply_markup
+            )
+        elif update.message:
+            await update.message.reply_text(
+                text=text,
+                parse_mode=parse_mode,
+                reply_markup=reply_markup
+            )
+    except Exception as e:
+        logger.error(f"Ошибка отправки/редактирования сообщения: {e}")
+
+
+def format_server_status(user_id: int, server_id: str, status_data: dict) -> str:
+    """Форматировать статус сервера для отображения"""
+    if status_data.get('status') == 'error':
+        return f"❌ {get_text(user_id, 'common', 'error')}: {status_data.get('error', 'Unknown error')}"
+
+    if status_data.get('status') == 'offline':
+        return f"🔴 {get_text(user_id, 'common', 'error')}: {status_data.get('error', 'Server offline')}"
+
+    # Форматируем информацию о диске
+    disk = status_data.get('disk', {})
+    disk_alert = disk.get('alert', 'ok')
+    disk_icon = '🟢' if disk_alert == 'ok' else ('🟡' if disk_alert == 'warning' else '🔴')
+
+    # Форматируем информацию о памяти
+    memory = status_data.get('memory', {})
+    memory_alert = memory.get('alert', 'ok')
+    memory_icon = '🟢' if memory_alert == 'ok' else ('🟡' if memory_alert == 'warning' else '🔴')
+
+    # Форматируем информацию о CPU
+    cpu = status_data.get('cpu', {})
+    cpu_alert = cpu.get('alert', 'ok')
+    cpu_icon = '🟢' if cpu_alert == 'ok' else ('🟡' if cpu_alert == 'warning' else '🔴')
+
+    server_name = SERVERS.get(server_id, {}).get('name', server_id)
+    server_role = SERVERS.get(server_id, {}).get('role', '')
+
+    result = f"📡 *{server_name}*"
+    if server_role:
+        result += f" ({server_role})"
+    result += "\n"
+
+    result += f"{disk_icon} Диск: {disk.get('percent', 0)}% ({disk.get('free_gb', 0):.1f} GB свободно)\n"
+    result += f"{memory_icon} Память: {memory.get('percent', 0)}% ({memory.get('free_gb', 0):.1f} GB свободно)\n"
+    result += f"{cpu_icon} CPU: {cpu.get('percent', 0)}%\n"
+
+    return result
+
+
+# ==================== КОМАНДЫ ====================
+
+async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Обработчик команды /start"""
+    user_id = get_user_id(update)
+
+    # Получаем имя пользователя
+    if update.message:
+        name = update.message.from_user.first_name or "Пользователь"
+    elif update.callback_query:
+        name = update.callback_query.from_user.first_name or "Пользователь"
+    else:
+        name = "Пользователь"
+
+    # Устанавливаем язык по умолчанию если не установлен
+    if not language_manager.get_user_language(user_id):
+        language_manager.set_user_language(user_id, 'ru')
+
+    logger.info(f"Пользователь {user_id} запустил бота")
+
+    text = get_text(user_id, 'start', 'welcome', name=name)
+    keyboard = [
+        [InlineKeyboardButton(get_text(user_id, "menu", "status"), callback_data="status")],
+        [InlineKeyboardButton(get_text(user_id, "menu", "docker"), callback_data="docker")],
+        [InlineKeyboardButton(get_text(user_id, "menu", "sites"), callback_data="sites")],
+        [InlineKeyboardButton(get_text(user_id, "menu", "pve"), callback_data="pve_status"),
+         InlineKeyboardButton(get_text(user_id, "menu", "pbs"), callback_data="pbs_status")],
+        [InlineKeyboardButton(get_text(user_id, "menu", "alerts"), callback_data="alerts"),
+         InlineKeyboardButton(get_text(user_id, "menu", "stats"), callback_data="stats")],
+        [InlineKeyboardButton(get_text(user_id, "menu", "logs"), callback_data="logs")],
+        [
+            InlineKeyboardButton(get_text(user_id, "menu", "language"), callback_data="language"),
+            InlineKeyboardButton(get_text(user_id, "menu", "help"), callback_data="help")
+        ]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    await send_or_edit_message(update, text, reply_markup=reply_markup)
+
+
+async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Обработчик команды /help"""
+    user_id = get_user_id(update)
+    text = get_text(user_id, 'menu', 'help_text')
+
+    keyboard = [[InlineKeyboardButton(get_text(user_id, "common", "back"), callback_data="menu")]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    await send_or_edit_message(update, text, reply_markup=reply_markup)
+
+
+async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Обработчик команды /status"""
+    user_id = get_user_id(update)
+
+    await send_or_edit_message(update, get_text(user_id, 'status', 'checking'))
+
+    checker = get_server_checker()
+    text = f"📊 *{get_text(user_id, 'status', 'title')}:*\n\n"
+
+    # Проверяем серверы приложений
+    app_servers = get_application_servers()
+    if app_servers:
+        text += f"🚀 *{get_text(user_id, 'status', 'app_servers')}:*\n"
+        for server_id in app_servers:
+            status = checker.check_remote_server(server_id)
+            text += format_server_status(user_id, server_id, status) + "\n"
+
+    # Проверяем виртуальные машины
+    vm_servers = get_virtual_machines()
+    if vm_servers:
+        text += f"\n💻 *{get_text(user_id, 'status', 'virtual_machines')}:*\n"
+        for server_id in vm_servers:
+            status = checker.check_remote_server(server_id)
+            text += format_server_status(user_id, server_id, status) + "\n"
+
+    keyboard = [[InlineKeyboardButton(get_text(user_id, "common", "back"), callback_data="menu")]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    await send_or_edit_message(update, text, reply_markup=reply_markup)
+
+
+
+
+
+async def site_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Обработчик команды /sites - проверка статуса сайтов"""
+    user_id = get_user_id(update)
+
+    try:
+        from checks.site_checker import SiteChecker
+        site_checker = SiteChecker()
+
+        await send_or_edit_message(update, f"🔍 {get_text(user_id, 'common', 'loading')}")
+
+        site_checks = site_checker.check_all_sites()
+        
+        text = f"🌐 *{get_text(user_id, 'sites', 'title')}:*\n\n"
+        
+        if site_checks.get("success"):
+            sites = site_checks.get("sites", [])
+            
+            for site in sites:
+                url = site.get("url", "")
+                status = site.get("status", "unknown")
+                response_time = site.get("response_time", 0)
+                error = site.get("error", "")
+                
+                if status == "up":
+                    text += f"🟢 {url}\n"
+                    text += f"   📡 HTTP {site.get('status_code', '?')} ({response_time}ms)\n"
+                elif status == "down":
+                    text += f"🔴 {url}\n"
+                    text += f"   ⚠️ {error}\n"
+                else:
+                    text += f"🟡 {url}\n"
+                    text += f"   ❓ {error}\n"
+                
+                # Добавляем информацию о сервере если есть
+                server = site.get("server", "")
+                if server:
+                    text += f"   🖥️ Сервер: {server}\n"
+                
+                text += "\n"
+            
+            text += f"📊 Всего: {len(sites)} сайтов\n"
+            
+        else:
+            text += f"❌ {get_text(user_id, 'common', 'error')}: {site_checks.get('error', 'Неизвестная ошибка')}\n"
+        
+        keyboard = [[InlineKeyboardButton(get_text(user_id, "common", "back"), callback_data="menu")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+
+        await send_or_edit_message(update, text, reply_markup=reply_markup)
+
+    except Exception as e:
+        error_text = f"❌ {get_text(user_id, 'common', 'error')}: {str(e)}"
+        logger.error(f"Ошибка в site_command: {e}")
+        await send_or_edit_message(update, error_text)
+
+async def pve_status_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Обработчик команды /pve_status"""
+    user_id = get_user_id(update)
+
+    try:
+        from checks.proxmox import get_proxmox_client
+
+        await send_or_edit_message(update, f"{get_text(user_id, 'pve', 'checking')} ⏳")
+
+        pve_servers = get_pve_servers()
+        text = f"🏗 *{get_text(user_id, 'pve', 'status')}:*\n\n"
+
+        for server_id in pve_servers:
+            try:
+                client = get_proxmox_client(server_id)
+                if client and client.check_connection():
+                    status = client.get_vms_status()
+                    server_name = SERVERS.get(server_id, {}).get('name', server_id)
+
+                    if status['status'] == 'success':
+                        vms = status.get('vms', [])
+                        running_vms = [vm for vm in vms if vm.get('status') == 'running']
+                        stopped_vms = [vm for vm in vms if vm.get('status') == 'stopped']
+
+                        text += f"✅ *{server_name}:* {get_text(user_id, 'pve', 'online')}\n"
+                        text += f"   📊 Всего VM: {len(vms)} | 🟢 Запущено: {len(running_vms)} | 🔴 Остановлено: {len(stopped_vms)}\n"
+
+                        # Показываем первые 3 запущенные VM
+                        if running_vms:
+                            text += "   🖥  Запущенные VM:\n"
+                            for vm in running_vms[:3]:
+                                text += f"      • {vm['name']} (VMID: {vm['vmid']})\n"
+                            if len(running_vms) > 3:
+                                text += f"      ... и ещё {len(running_vms) - 3}\n"
+                    else:
+                        text += f"✅ *{server_name}:* {get_text(user_id, 'pve', 'online')}\n"
+                        text += f"   📛 {status.get('message', 'Нет данных')}\n"
+                else:
+                    text += f"🔴 *{server_id}:* {get_text(user_id, 'pve', 'offline')}\n"
+            except Exception as e:
+                text += f"🔴 *{server_id}:* {get_text(user_id, 'common', 'error')} - {str(e)[:50]}\n"
+
+        if not pve_servers:
+            text = f"ℹ️ *{get_text(user_id, 'pve', 'no_servers')}*"
+
+        keyboard = [[InlineKeyboardButton(get_text(user_id, "common", "back"), callback_data="menu")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+
+        await send_or_edit_message(update, text, reply_markup=reply_markup)
+
+    except Exception as e:
+        error_text = f"❌ {get_text(user_id, 'common', 'error')} {get_text(user_id, 'pve', 'checking_status')}: {str(e)}"
+        logger.error(f"Ошибка в pve_status_command: {e}")
+        await send_or_edit_message(update, error_text)
+
+
+async def pbs_status_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Обработчик команды /pbs_status"""
+    user_id = get_user_id(update)
+
+    try:
+        from checks.proxmox import get_proxmox_backup_client
+
+        await send_or_edit_message(update, f"{get_text(user_id, 'pbs', 'checking')} ⏳")
+
+        pbs_servers = get_pbs_servers()
+        text = f"💾 *{get_text(user_id, 'pbs', 'status')}:*\n\n"
+
+        for server_id in pbs_servers:
+            try:
+                client = get_proxmox_backup_client(server_id)
+                if client and client.check_connection():
+                    status = client.get_backups_status()
+                    server_name = SERVERS.get(server_id, {}).get('name', server_id)
+
+                    if status['status'] == 'success':
+                        text += f"✅ *{server_name}:* {get_text(user_id, 'pbs', 'online')}\n"
+                        text += f"   📝 {status.get('message', 'Нет данных')}\n"
+
+                        # Показываем последние задачи
+                        last_tasks = status.get('last_tasks', '')
+                        if last_tasks and last_tasks != 'Нет данных' and len(last_tasks) > 10:
+                            text += f"   📋 Последние задачи:\n"
+                            tasks_lines = last_tasks.split('\n')
+                            for line in tasks_lines[:3]:  # Показываем первые 3 строки
+                                if line.strip():
+                                    display_line = line[:50] + '...' if len(line) > 50 else line
+                                    text += f"      {display_line}\n"
+                    else:
+                        text += f"✅ *{server_name}:* {get_text(user_id, 'pbs', 'online')}\n"
+                        text += f"   📛 {status.get('message', 'Нет данных')}\n"
+                else:
+                    text += f"🔴 *{server_id}:* {get_text(user_id, 'pbs', 'offline')}\n"
+            except Exception as e:
+                text += f"🔴 *{server_id}:* {get_text(user_id, 'common', 'error')} - {str(e)[:50]}\n"
+
+        if not pbs_servers:
+            text = f"ℹ️ *{get_text(user_id, 'pbs', 'no_servers')}*"
+
+        keyboard = [[InlineKeyboardButton(get_text(user_id, "common", "back"), callback_data="menu")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+
+        await send_or_edit_message(update, text, reply_markup=reply_markup)
+
+    except Exception as e:
+        error_text = f"❌ {get_text(user_id, 'common', 'error')} {get_text(user_id, 'pbs', 'checking_status')}: {str(e)}"
+        logger.error(f"Ошибка в pbs_status_command: {e}")
+        await send_or_edit_message(update, error_text)
+
+
+async def version_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Обработчик команды /version"""
+    user_id = get_user_id(update)
+
+    version_info = get_version_info()
+    text = f"📦 *{get_text(user_id, 'version', 'title')}:*\n\n"
+    text += f"• {get_text(user_id, 'version', 'bot_version')}: {version_info['bot_version']}\n"
+    text += f"• {get_text(user_id, 'version', 'python_version')}: {version_info['python_version']}\n"
+    text += f"• {get_text(user_id, 'version', 'start_time')}: {version_info['start_time']}\n"
+    text += f"• {get_text(user_id, 'version', 'uptime')}: {version_info['uptime']}\n"
+
+    keyboard = [[InlineKeyboardButton(get_text(user_id, "common", "back"), callback_data="menu")]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    await send_or_edit_message(update, text, reply_markup=reply_markup)
+
+
+# ==================== CALLBACK ОБРАБОТЧИКИ ====================
+
+async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Обработчик callback запросов"""
+    query = update.callback_query
+    await query.answer()
+
+    callback_data = query.data
+    user_id = query.from_user.id
+
+    logger.info(f"Обработан callback: {callback_data} для пользователя {user_id}")
+
+    if callback_data == "menu":
+        await start_command(update, context)
+
+    elif callback_data == "status":
+        # Показываем подменю для выбора типа статуса
+        user_id = get_user_id(update)
+
+        text = f"📊 *{get_text(user_id, 'status', 'title')}:*\\n\\n"
+        text += f"Выберите тип серверов для проверки:\\n"
+
+        keyboard = [
+            [InlineKeyboardButton(f"🚀 {get_text(user_id, "status", "app_servers")}", callback_data="status_app")],
+            [InlineKeyboardButton(f"💻 {get_text(user_id, "status", "virtual_machines")}", callback_data="status_vm")],
+            [InlineKeyboardButton(get_text(user_id, "common", "back"), callback_data="menu")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+
+        await send_or_edit_message(update, text, reply_markup=reply_markup)
+
+    elif callback_data == "docker":
+        # Показываем подменю Docker
+        user_id = get_user_id(update)
+        
+        text = f"🐳 *{get_text(user_id, 'docker', 'status')}:*\n\n"
+        text += f"{get_text(user_id, 'common', 'loading')}\n"
+        
+        keyboard = [
+            [InlineKeyboardButton(f"🔍 {get_text(user_id, 'docker', 'check_serv301')}", callback_data="docker_check_serv301")],
+            [InlineKeyboardButton(f"🔍 {get_text(user_id, 'docker', 'check_serv300')}", callback_data="docker_check_serv300")],
+            [InlineKeyboardButton(f"🔍 {get_text(user_id, 'common', 'check_all')}", callback_data="docker_check_all")],
+            [InlineKeyboardButton(f"🔄 {get_text(user_id, 'docker', 'restart_serv301')}", callback_data="docker_restart_serv301")],
+            [InlineKeyboardButton(f"🔄 {get_text(user_id, 'docker', 'restart_serv300')}", callback_data="docker_restart_serv300")],
+            [InlineKeyboardButton(f"🔄 {get_text(user_id, 'common', 'restart_all')}", callback_data="docker_restart_all")],
+            [InlineKeyboardButton(get_text(user_id, "common", "back"), callback_data="menu")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await send_or_edit_message(update, text, reply_markup=reply_markup)
+
+    elif callback_data == "docker_serv300":
+        await check_server_docker(update, context, "serv300")
+
+    elif callback_data == "docker_check_serv301":
+        # Проверка Docker на SERV301
+        user_id = get_user_id(update)
+        await send_or_edit_message(update, f"🔍 Проверяю Docker на SERV301...")
+        
+        from checks.docker import get_docker_status
+        status = get_docker_status('serv301')
+        
+        text = f"🐳 *Docker SERV301:*\n\n"
+        if status.get('success') or status.get('status') == 'success' or 'containers' in status:
+            containers = status.get('containers', [])
+            running = sum(1 for c in containers if c.get('running'))
+            total = len(containers)
+            text += f"🟢 Запущено: {running}/{total}\n\n"
+            
+            if containers:
+                for container in containers:
+                    status_icon = '🟢' if container.get('running') else '🔴'
+                    text += f"{status_icon} {container.get('name', 'Unknown')}\n"
+        else:
+            text += f"🔴 Ошибка: {status.get('error', 'Неизвестная ошибка')}\n"
+        
+        keyboard = [[InlineKeyboardButton(get_text(user_id, "common", "back"), callback_data="docker")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await send_or_edit_message(update, text, reply_markup=reply_markup)
+
+    elif callback_data == "docker_check_serv300":
+        # Проверка Docker на SERV300
+        user_id = get_user_id(update)
+        await send_or_edit_message(update, f"🔍 Проверяю Docker на SERV300...")
+        
+        from checks.docker import get_docker_status
+        status = get_docker_status('serv300')
+        
+        text = f"🐳 *Docker SERV300:*\n\n"
+        if status.get('success') or status.get('status') == 'success' or 'containers' in status:
+            containers = status.get('containers', [])
+            running = sum(1 for c in containers if c.get('running'))
+            total = len(containers)
+            text += f"🟢 Запущено: {running}/{total}\n\n"
+            
+            if containers:
+                for container in containers:
+                    status_icon = '🟢' if container.get('running') else '🔴'
+                    text += f"{status_icon} {container.get('name', 'Unknown')}\n"
+        else:
+            text += f"🔴 Ошибка: {status.get('error', 'Неизвестная ошибка')}\n"
+        
+        keyboard = [[InlineKeyboardButton(get_text(user_id, "common", "back"), callback_data="docker")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await send_or_edit_message(update, text, reply_markup=reply_markup)
+
+    elif callback_data == "docker_check_all":
+        # Проверка Docker на обоих серверах
+        user_id = get_user_id(update)
+        await send_or_edit_message(update, f"🔍 Проверяю Docker на всех серверах...")
+        
+        from checks.docker import get_docker_status
+        status_301 = get_docker_status('serv301')
+        status_300 = get_docker_status('serv300')
+        
+        text = f"🐳 *Docker - все серверы:*\n\n"
+        
+        # SERV301
+        text += f"*SERV301:*\n"
+        if status_301.get('success') or status_301.get('status') == 'success' or 'containers' in status_301:
+            containers = status_301.get('containers', [])
+            running = sum(1 for c in containers if c.get('running'))
+            total = len(containers)
+            text += f"🟢 Запущено: {running}/{total}\n"
+        else:
+            text += f"🔴 Ошибка: {status_301.get('error', 'Неизвестная ошибка')}\n"
+        
+        text += f"\n*SERV300:*\n"
+        if status_300.get('success') or status_300.get('status') == 'success' or 'containers' in status_300:
+            containers = status_300.get('containers', [])
+            running = sum(1 for c in containers if c.get('running'))
+            total = len(containers)
+            text += f"🟢 Запущено: {running}/{total}\n"
+        else:
+            text += f"🔴 Ошибка: {status_300.get('error', 'Неизвестная ошибка')}\n"
+        
+        keyboard = [[InlineKeyboardButton(get_text(user_id, "common", "back"), callback_data="docker")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await send_or_edit_message(update, text, reply_markup=reply_markup)
+
+    elif callback_data == "docker_restart_serv301":
+        # Перезапуск Docker на SERV301
+        user_id = get_user_id(update)
+        await send_or_edit_message(update, fget_text(user_id, "docker", "restarting_serv301"))
+        
+        from checks.docker import restart_docker_container, get_server_containers_list
+        from config.settings import DOCKER_CONFIG
+        
+        text = f"🔄 *Перезапуск Docker SERV301:*\n\n"
+        
+        try:
+            # Получаем контейнеры для serv301
+            containers = DOCKER_CONFIG.get("serv301", {}).get("containers", [])
+            
+            if not containers:
+                text += "❌ Нет контейнеров в конфигурации\n"
+            else:
+                # Перезапускаем все контейнеры на serv301
+                result = restart_docker_container("serv301")
+                
+                if result.get("success"):
+                    text += f"✅ Все контейнеры успешно перезапущены\n"
+                    if result.get("output"):
+                        text += f"\n📋 Вывод:\n`{result.get('output', '')[:500]}`\n"
+                else:
+                    text += f"❌ Ошибка: {result.get('error', 'Неизвестная ошибка')}\n"
+                    if result.get("output"):
+                        text += f"\n📋 Вывод:\n`{result.get('output', '')[:500]}`\n"
+        
+        except Exception as e:
+            text += f"❌ Исключение: {str(e)}"
+        
+        keyboard = [[InlineKeyboardButton(get_text(user_id, "common", "back"), callback_data="docker")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await send_or_edit_message(update, text, reply_markup=reply_markup)
+
+    elif callback_data == "docker_restart_serv300":
+        # Перезапуск Docker на SERV300
+        user_id = get_user_id(update)
+        await send_or_edit_message(update, f"🔄 Перезапускаю Docker на SERV300...")
+        
+        from checks.docker import restart_docker_container, get_server_containers_list
+        from config.settings import DOCKER_CONFIG
+        
+        text = f"🔄 *Перезапуск Docker SERV300:*\n\n"
+        
+        try:
+            # Получаем контейнеры для serv300
+            containers = DOCKER_CONFIG.get("serv300", {}).get("containers", [])
+            
+            if not containers:
+                text += "❌ Нет контейнеров в конфигурации\n"
+            else:
+                # Перезапускаем все контейнеры на serv300
+                result = restart_docker_container("serv300")
+                
+                if result.get("success"):
+                    text += f"✅ Все контейнеры успешно перезапущены\n"
+                    if result.get("output"):
+                        text += f"\n📋 Вывод:\n`{result.get('output', '')[:500]}`\n"
+                else:
+                    text += f"❌ Ошибка: {result.get('error', 'Неизвестная ошибка')}\n"
+                    if result.get("output"):
+                        text += f"\n📋 Вывод:\n`{result.get('output', '')[:500]}`\n"
+        
+        except Exception as e:
+            text += f"❌ Исключение: {str(e)}"
+        
+        keyboard = [[InlineKeyboardButton(get_text(user_id, "common", "back"), callback_data="docker")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await send_or_edit_message(update, text, reply_markup=reply_markup)
+
+    elif callback_data == "docker_restart_all":
+        # Перезапуск Docker на всех серверах
+        user_id = get_user_id(update)
+        await send_or_edit_message(update, f"🔄 Перезапускаю Docker на всех серверах...")
+        
+        from checks.docker import restart_all_servers_containers
+        from config.settings import DOCKER_CONFIG
+        
+        text = f"🔄 *Перезапуск Docker - все серверы:*\n\n"
+        
+        try:
+            # Перезапускаем все контейнеры на всех серверах
+            result = restart_all_servers_containers()
+            
+            if result.get("success"):
+                text += f"✅ Все контейнеры на всех серверах успешно перезапущены\n\n"
+                
+                # Показываем результаты по серверам
+                servers_results = result.get("servers", {})
+                for server_id, server_result in servers_results.items():
+                    if server_result.get("success"):
+                        text += f"🟢 {server_id.upper()}: Успешно\n"
+                        if server_result.get("output"):
+                            output_preview = server_result.get("output", "")[:200]
+                            if output_preview:
+                                text += f"   📋: `{output_preview}`\n"
+                    else:
+                        text += f"🔴 {server_id.upper()}: Ошибка\n"
+                        if server_result.get("error"):
+                            text += f"   ❌: {server_result.get('error', 'Неизвестная ошибка')[:100]}\n"
+            else:
+                text += f"❌ Общая ошибка: {result.get('error', 'Неизвестная ошибка')}\n"
+                
+                # Показываем детали по серверам
+                servers_results = result.get("servers", {})
+                for server_id, server_result in servers_results.items():
+                    if server_result.get("success"):
+                        text += f"🟢 {server_id.upper()}: Успешно\n"
+                    else:
+                        text += f"🔴 {server_id.upper()}: {server_result.get('error', 'Неизвестная ошибка')[:100]}\n"
+        
+        except Exception as e:
+            text += f"❌ Исключение: {str(e)}"
+        
+        keyboard = [[InlineKeyboardButton(get_text(user_id, "common", "back"), callback_data="docker")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await send_or_edit_message(update, text, reply_markup=reply_markup)
+
+    elif callback_data == "sites":
+        await site_command(update, context)
+    elif callback_data == "alerts":
+        await alerts_command(update, context)
+    elif callback_data == "stats":
+        await stats_command(update, context)
+    elif callback_data == "logs":
+        await logs_command(update, context)
+    elif callback_data == "monitor_status":
+        await monitor_status_command(update, context)
+    elif callback_data == "monitor_log":
+        await monitor_log_command(update, context)
+    elif callback_data == "cleanup_confirm":
+        user_id = get_user_id(update)
+        text = f"🧹 *Очистка данных:*\n\n"
+        text += "Вы уверены что хотите очистить старые данные?"
+        keyboard = [
+            [InlineKeyboardButton("✅ Да, очистить", callback_data="cleanup_execute")],
+            [InlineKeyboardButton("❌ Отмена", callback_data="logs")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await send_or_edit_message(update, text, reply_markup=reply_markup)
+    elif callback_data == "cleanup_execute":
+        await cleanup_command(update, context)
+        await site_command(update, context)
+    elif callback_data == "status_app":
+        # Проверка серверов приложений
+        user_id = get_user_id(update)
+        await send_or_edit_message(update, f"🔍 {get_text(user_id, 'status', 'checking')}")
+        
+        from config.settings import get_application_servers
+        from checks.servers import get_server_checker
+        checker = get_server_checker()
+        text = f"🚀 *Серверы приложений:*\\n\\n"
+        
+        app_servers = get_application_servers()
+        if app_servers:
+            for server_id in app_servers:
+                status = checker.check_remote_server(server_id)
+                text += format_server_status(user_id, server_id, status) + "\\n"
+        else:
+            text += "ℹ️ Нет настроенных серверов приложений\\n"
+        
+        keyboard = [[InlineKeyboardButton("🔙 Назад", callback_data="status")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await send_or_edit_message(update, text, reply_markup=reply_markup)
+
+    elif callback_data == "status_vm":
+        # Проверка виртуальных машин
+        user_id = get_user_id(update)
+        await send_or_edit_message(update, f"🔍 {get_text(user_id, 'status', 'checking')}")
+        
+        from config.settings import get_virtual_machines
+        from checks.servers import get_server_checker
+        checker = get_server_checker()
+        text = f"💻 *Виртуальные машины:*\\n\\n"
+        
+        vm_servers = get_virtual_machines()
+        if vm_servers:
+            for server_id in vm_servers:
+                status = checker.check_remote_server(server_id)
+                text += format_server_status(user_id, server_id, status) + "\\n"
+        else:
+            text += "ℹ️ Нет настроенных виртуальных машин\\n"
+        
+        keyboard = [[InlineKeyboardButton("🔙 Назад", callback_data="status")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await send_or_edit_message(update, text, reply_markup=reply_markup)
+
+    elif callback_data == "pve_status":
+        # Получаем user_id из запроса
+        user_id = query.from_user.id
+
+        # Создаем правильный update объект
+        class SimpleUpdate:
+            def __init__(self, user_id, query):
+                class EffectiveUser:
+                    id = user_id
+                self.effective_user = EffectiveUser()
+                self.callback_query = query
+
+        simple_update = SimpleUpdate(user_id, query)
+        await pve_status_command(simple_update, context)
+
+    elif callback_data == "pbs_status":
+        # Получаем user_id из запроса
+        user_id = query.from_user.id
+
+        # Создаем правильный update объект
+        class SimpleUpdate:
+            def __init__(self, user_id, query):
+                class EffectiveUser:
+                    id = user_id
+                self.effective_user = EffectiveUser()
+                self.callback_query = query
+
+        simple_update = SimpleUpdate(user_id, query)
+        await pbs_status_command(simple_update, context)
+
+    elif callback_data == "help":
+        await help_command(update, context)
+
+    elif callback_data == "language":
+        # Показываем выбор языка
+        keyboard = []
+        for lang_code, lang_name in LANGUAGE_NAMES.items():
+            keyboard.append([InlineKeyboardButton(lang_name, callback_data=f"set_lang_{lang_code}")])
+        keyboard.append([InlineKeyboardButton(get_text(user_id, "common", "back"), callback_data="menu")])
+
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        text = get_text(user_id, 'language', 'select')
+
+        await send_or_edit_message(update, text, reply_markup=reply_markup)
+
+    elif callback_data.startswith("set_lang_"):
+        lang_code = callback_data.replace("set_lang_", "")
+        language_manager.set_user_language(user_id, lang_code)
+
+        text = get_text(user_id, 'language', 'changed')
+        keyboard = [[InlineKeyboardButton(get_text(user_id, "common", "back"), callback_data="menu")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+
+        await send_or_edit_message(update, text, reply_markup=reply_markup)
+
+    elif callback_data.startswith("check_server_"):
+        server = callback_data.replace("check_server_", "")
+        await check_server_status(update, context, server)
+
+    else:
+        await query.edit_message_text(f"❌ Неизвестная команда: {callback_data}")
+
+
+async def check_server_docker(update: Update, context: ContextTypes.DEFAULT_TYPE, server_id: str) -> None:
+    """Проверить Docker на указанном сервере"""
+    query = update.callback_query
+    user_id = query.from_user.id
+
+    try:
+        from checks.docker import get_docker_status
+
+        await query.edit_message_text(f"Проверяю Docker на {server_id}... ⏳")
+
+        status_data = get_docker_status(server_id)
+        text = f"🐳 *Docker на {server_id}:*\n\n"
+
+        if status_data.get('success'):
+            containers = status_data.get('containers', [])
+            running = sum(1 for c in containers if c.get('running'))
+            total = len(containers)
+
+            text += f"🟢 Запущено: {running}/{total}\n\n"
+
+            if containers:
+                for container in containers[:10]:
+                    status = container.get('status', 'unknown')
+                    status_icon = '🟢' if container.get('running') else '🔴'
+                    name = container.get('name', 'Unknown')
+                    text += f"{status_icon} {name} ({status})\n"
+
+                if len(containers) > 10:
+                    text += f"\n... и ещё {len(containers) - 10} контейнеров"
+        else:
+            text += f"🔴 Ошибка: {status_data.get('error', 'Unknown')}"
+
+        keyboard = [[InlineKeyboardButton("Назад к Docker", callback_data="docker")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+
+        await query.edit_message_text(text=text, parse_mode="Markdown", reply_markup=reply_markup)
+
+    except Exception as e:
+        await query.edit_message_text(f"❌ Ошибка при проверке Docker на {server_id}: {str(e)}")
+
+
+async def check_server_status(update: Update, context: ContextTypes.DEFAULT_TYPE, server: str) -> None:
+    """Проверить статус конкретного сервера"""
+    query = update.callback_query
+    user_id = query.from_user.id
+
+    try:
+        if server == "all":
+            try:
+                from checks.servers import get_server_checker
+                from config.settings import get_all_servers
+
+                await query.edit_message_text("Проверяю все серверы... ⏳")
+
+                checker = get_server_checker()
+                text = "📊 *Статус всех серверов:*\n\n"
+
+                all_servers = get_all_servers()
+                for server_id in all_servers:
+                    status = checker.check_remote_server(server_id)
+                    text += format_server_status(user_id, server_id, status) + "\n"
+
+                keyboard = [[InlineKeyboardButton(get_text(user_id, "common", "back"), callback_data="menu")]]
+                reply_markup = InlineKeyboardMarkup(keyboard)
+
+                await query.edit_message_text(text=text, parse_mode="Markdown", reply_markup=reply_markup)
+
+            except Exception as e:
+                await query.edit_message_text(f"❌ Ошибка при проверке всех серверов: {str(e)}")
+
+        elif server == "serv301":
+            try:
+                from checks.servers import get_server_checker
+
+                await query.edit_message_text("Проверяю SERV301... ⏳")
+
+                checker = get_server_checker()
+                status = checker.check_remote_server("serv301")
+
+                text = format_server_status(user_id, "serv301", status)
+
+                keyboard = [[InlineKeyboardButton(get_text(user_id, "common", "back"), callback_data="menu")]]
+                reply_markup = InlineKeyboardMarkup(keyboard)
+
+                await query.edit_message_text(text=text, parse_mode="Markdown", reply_markup=reply_markup)
+
+            except Exception as e:
+                await query.edit_message_text(f"❌ Ошибка при проверке SERV301: {str(e)}")
+
+        elif server == "serv300":
+            try:
+                from checks.servers import get_server_checker
+
+                await query.edit_message_text("Проверяю SERV300... ⏳")
+
+                checker = get_server_checker()
+                status = checker.check_remote_server("serv300")
+
+                text = format_server_status(user_id, "serv300", status)
+
+                keyboard = [[InlineKeyboardButton(get_text(user_id, "common", "back"), callback_data="menu")]]
+                reply_markup = InlineKeyboardMarkup(keyboard)
+
+                await query.edit_message_text(text=text, parse_mode="Markdown", reply_markup=reply_markup)
+
+            except Exception as e:
+                await query.edit_message_text(f"❌ Ошибка при проверке SERV300: {str(e)}")
+
+    except Exception as e:
+        await query.edit_message_text(f"❌ Ошибка: {str(e)}")
+
+
+
+def register_handlers(application):
+    """Зарегистрировать все обработчики"""
+    # Команды
+    application.add_handler(CommandHandler("start", start_command))
+    application.add_handler(CommandHandler("help", help_command))
+    application.add_handler(CommandHandler("status", status_command))
+    # application.add_handler(CommandHandler("docker", docker_status_command))  # Убрано, т.к. Docker теперь через меню
+    application.add_handler(CommandHandler("sites", site_command))
+    application.add_handler(CommandHandler("pve_status", pve_status_command))
+    application.add_handler(CommandHandler("pbs_status", pbs_status_command))
+    application.add_handler(CommandHandler("version", version_command))
+    application.add_handler(CommandHandler("alerts", alerts_command))
+    application.add_handler(CommandHandler("stats", stats_command))
+    application.add_handler(CommandHandler("logs", logs_command))
+    application.add_handler(CommandHandler("monitor_status", monitor_status_command))
+    application.add_handler(CommandHandler("monitor_log", monitor_log_command))
+    application.add_handler(CommandHandler("cleanup", cleanup_command))
+    application.add_handler(CommandHandler("monitorstatus", monitor_status_command))
+    application.add_handler(CommandHandler("monitorlog", monitor_log_command))
+    application.add_handler(CommandHandler("pvestatus", pve_status_command))
+    application.add_handler(CommandHandler("pbsstatus", pbs_status_command))
+    
+    # Callback обработчики
+    application.add_handler(CallbackQueryHandler(callback_handler))
+    
+    logger.info("Обработчики команд зарегистрированы")
+# ==================== КОМАНДЫ МОНИТОРИНГА ====================
+
+async def alerts_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Обработчик команды /alerts"""
+    user_id = get_user_id(update)
+
+    try:
+        from database.monitoring_db import get_db
+        db = get_db()
+        
+        alerts = db.get_unresolved_alerts()
+        
+        if not alerts:
+            text = f"🎉 *Нет активных алертов!*"
+        else:
+            text = f"🚨 *Активные алерты ({len(alerts)}):*\n\n"
+            
+            for i, alert in enumerate(alerts, 1):
+                severity = alert.get('severity', 'warning')
+                severity_icon = {
+                    'critical': '🔴',
+                    'warning': '🟡',
+                    'info': '🔵'
+                }.get(severity, '⚪')
+                
+                created = alert.get('created_at', '')
+                if 'T' in created:
+                    created = created.split('T')[1][:8]
+                
+                text += f"{severity_icon} *{alert.get('title', '')}*\n"
+                text += f"   ⏰ {created}\n"
+                
+                message = alert.get('message', '')
+                if message and len(message) > 100:
+                    message = message[:100] + "..."
+                
+                if message:
+                    text += f"   📝 {message}\n"
+                
+                text += "\n"
+        
+        keyboard = [[InlineKeyboardButton("Назад", callback_data="menu")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await send_or_edit_message(update, text, reply_markup=reply_markup)
+        db.log_command(user_id, 'alerts')
+        
+    except Exception as e:
+        logger.error(f"Ошибка в alerts_command: {e}")
+        error_text = f"❌ Ошибка: {str(e)}"
+        await send_or_edit_message(update, error_text)
+
+
+async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Обработчик команды /stats"""
+    user_id = get_user_id(update)
+
+    try:
+        from checks.site_checker import SiteChecker
+        from database.monitoring_db import get_db
+        
+        await send_or_edit_message(update, f"📊 Загрузка...")
+        
+        # Получаем данные
+        site_checker = SiteChecker()
+        site_result = site_checker.check_all_sites()
+        db = get_db()
+        command_stats = db.get_command_stats()
+        
+        text = f"📊 *Статистика системы:*\n\n"
+        
+        # Статус сайтов
+        if site_result.get('success'):
+            sites = site_result.get('sites', [])
+            successful = sum(1 for s in sites if s.get('status') == 'up')
+            total = len(sites)
+            
+            text += f"🌐 *Статус сайтов:*\n"
+            for site in sites[:3]:  # Показываем первые 3 сайта
+                status_icon = '🟢' if site.get('status') == 'up' else '🔴'
+                response_time = site.get('response_time', 0)
+                text += f"{status_icon} {site.get('name', 'Unknown')}: {response_time:.0f}ms\n"
+            
+            if total > 3:
+                text += f"   ... и еще {total - 3} сайтов\n"
+            
+            text += f"\n✅ *Итог:* {successful}/{total} сайтов работают\n"
+            if total > 0:
+                availability = (successful / total) * 100
+                text += f"📈 *Доступность:* {availability:.1f}%\n"
+        
+        # Статистика команд
+        text += f"\n📊 *Статистика команд:*\n"
+        text += f"📈 *Всего команд:* {command_stats.get('total_commands', 0)}\n"
+        
+        # Топ команд
+        command_stats_list = command_stats.get('command_stats', [])
+        if command_stats_list:
+            text += f"\n🔥 *Популярные команды:*\n"
+            for i, stat in enumerate(command_stats_list[:5], 1):
+                text += f"{i}. {stat['command']}: {stat['count']}\n"
+        
+        text += f"\n⏰ *Время:* {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+        
+        keyboard = [[InlineKeyboardButton("Назад", callback_data="menu")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await send_or_edit_message(update, text, reply_markup=reply_markup)
+        db.log_command(user_id, 'stats')
+        
+    except Exception as e:
+        logger.error(f"Ошибка в stats_command: {e}")
+        error_text = f"❌ Ошибка: {str(e)}"
+        await send_or_edit_message(update, error_text)
+
+
+async def logs_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Обработчик команды /logs"""
+    user_id = get_user_id(update)
+
+    try:
+        from database.monitoring_db import get_db
+        db = get_db()
+        
+        text = f"📋 *Логи системы:*\n\n"
+        text += f"Информация о логах системы мониторинга.\n\n"
+        text += f"📁 *Пути:*\n"
+        text += f"• База данных: `database/monitoring.db`\n"
+        text += f"• Файлы логов: `logs/`\n\n"
+        text += f"🚨 *Просмотр алертов:*\n"
+        text += f"/alerts - Нерешенные алерты\n\n"
+        text += f"🧹 *Очистка:*\n"
+        text += f"/cleanup - Очистка старых данных"
+        
+        keyboard = [
+            [InlineKeyboardButton("🚨 Алерты", callback_data="alerts")],
+            [InlineKeyboardButton("🧹 Очистка", callback_data="cleanup_confirm")],
+            [InlineKeyboardButton("Назад", callback_data="menu")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await send_or_edit_message(update, text, reply_markup=reply_markup)
+        db.log_command(user_id, 'logs')
+        
+    except Exception as e:
+        logger.error(f"Ошибка в logs_command: {e}")
+        error_text = f"❌ Ошибка: {str(e)}"
+        await send_or_edit_message(update, error_text)
+
+
+async def monitor_status_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Обработчик команды /monitor_status"""
+    user_id = get_user_id(update)
+
+    try:
+        text = f"📈 *Статус мониторинга:*\n\n"
+        text += f"Система автоматического мониторинга инфраструктуры.\n\n"
+        text += f"📊 *Что мониторится:*\n"
+        text += f"• Сайты: каждые 5 минут\n"
+        text += f"• Системные метрики: каждые 5 минут\n"
+        text += f"• Docker контейнеры: каждые 5 минут\n\n"
+        text += f"📈 *Текущий статус:*\n"
+        text += f"✅ База данных работает\n"
+        text += f"✅ Модули готовы\n"
+        text += f"⏳ Планировщик будет добавлен\n\n"
+        text += f"🚀 *Используйте команды:*\n"
+        text += f"/sites - Проверить сайты\n"
+        text += f"/status - Полная проверка\n"
+        text += f"/status301, /status300 - Проверить серверы"
+        
+        keyboard = [[InlineKeyboardButton("Назад", callback_data="menu")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await send_or_edit_message(update, text, reply_markup=reply_markup)
+        
+        from database.monitoring_db import get_db
+        get_db().log_command(user_id, 'monitor_status')
+        
+    except Exception as e:
+        logger.error(f"Ошибка в monitor_status_command: {e}")
+        error_text = f"❌ Ошибка: {str(e)}"
+        await send_or_edit_message(update, error_text)
+
+
+async def monitor_log_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Обработчик команды /monitor_log"""
+    user_id = get_user_id(update)
+
+    try:
+        text = f"📋 *Лог мониторинга:*\n\n"
+        text += "Здесь будет отображаться история изменений и событий мониторинга.\n\n"
+        text += "Функция находится в разработке.\n"
+        text += f"⏰ *Время:* {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+        
+        keyboard = [[InlineKeyboardButton("Назад", callback_data="menu")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await send_or_edit_message(update, text, reply_markup=reply_markup)
+        
+        from database.monitoring_db import get_db
+        get_db().log_command(user_id, 'monitor_log')
+        
+    except Exception as e:
+        logger.error(f"Ошибка в monitor_log_command: {e}")
+        error_text = f"❌ Ошибка: {str(e)}"
+        await send_or_edit_message(update, error_text)
+
+
+async def cleanup_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Обработчик команды /cleanup"""
+    user_id = get_user_id(update)
+
+    try:
+        from database.monitoring_db import get_db
+        db = get_db()
+        
+        # Выполняем очистку
+        result = db.cleanup_old_checks()
+        
+        text = f"🧹 *Очистка данных:*\n\n"
+        text += f"✅ Очистка завершена:\n"
+        text += f"• Удалено проверок сайтов: {result['site_checks']}\n"
+        text += f"• Удалено проверок системы: {result['system_checks']}\n"
+        text += f"• Помечено алертов как решенные: {result['alerts_resolved']}"
+        
+        keyboard = [[InlineKeyboardButton("Назад", callback_data="menu")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await send_or_edit_message(update, text, reply_markup=reply_markup)
+        db.log_command(user_id, 'cleanup')
+        
+    except Exception as e:
+        logger.error(f"Ошибка в cleanup_command: {e}")
+        error_text = f"❌ Ошибка: {str(e)}"
+        await send_or_edit_message(update, error_text)
+    """Зарегистрировать все обработчики"""
+    # Команды
+
+    # Callback обработчики
+    application.add_handler(CallbackQueryHandler(callback_handler))
+
+    logger.info("Обработчики команд зарегистрированы")
+
+    try:
+        from database.monitoring_db import get_db
+        db = get_db()
+        
+        alerts = db.get_unresolved_alerts()
+        
+        if not alerts:
+            text = f"🎉 *{get_text(user_id, 'alerts', 'no_alerts')}*"
+        else:
+            text = f"🚨 *{get_text(user_id, 'alerts', 'title')} ({len(alerts)}):*\n\n"
+            
+            for i, alert in enumerate(alerts, 1):
+                severity = alert.get('severity', 'warning')
+                severity_icon = {
+                    'critical': '🔴',
+                    'warning': '🟡',
+                    'info': '🔵'
+                }.get(severity, '⚪')
+                
+                created = alert.get('created_at', '')
+                if 'T' in created:
+                    created = created.split('T')[1][:8]
+                
+                text += f"{severity_icon} *{alert.get('title', '')}*\n"
+                text += f"   ⏰ {created}\n"
+                
+                message = alert.get('message', '')
+                if message and len(message) > 100:
+                    message = message[:100] + "..."
+                
+                if message:
+                    text += f"   📝 {message}\n"
+                
+                text += "\n"
+        
+        keyboard = [[InlineKeyboardButton(get_text(user_id, "common", "back"), callback_data="menu")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await send_or_edit_message(update, text, reply_markup=reply_markup)
+        db.log_command(user_id, 'alerts')
+        
+    except Exception as e:
+        logger.error(f"Ошибка в alerts_command: {e}")
+        error_text = f"❌ {get_text(user_id, 'common', 'error')}: {str(e)}"
+        await send_or_edit_message(update, error_text)
+
+
+async def monitor_status_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Обработчик команды /monitor_status"""
+    user_id = get_user_id(update)
+    lang = language_manager.get_user_language(user_id)
+
+    try:
+        text = f"📈 *{get_text(user_id, 'monitor', 'status_title')}:*\n\n"
+        text += f"{get_text(user_id, 'monitor', 'description')}\n\n"
+        text += f"📊 *{get_text(user_id, 'monitor', 'what_monitored')}*\n"
+        text += f"• {get_text(user_id, 'monitor', 'sites')}: {get_text(user_id, 'monitor', 'every_5_min')}\n"
+        text += f"• {get_text(user_id, 'monitor', 'system_metrics')}: {get_text(user_id, 'monitor', 'every_5_min')}\n"
+        text += f"• {get_text(user_id, 'monitor', 'docker')}: {get_text(user_id, 'monitor', 'every_5_min')}\n\n"
+        text += f"📈 *{get_text(user_id, 'monitor', 'current_status')}*\n"
+        text += f"✅ {get_text(user_id, 'monitor', 'database_works')}\n"
+        text += f"✅ {get_text(user_id, 'monitor', 'modules_ready')}\n"
+        text += f"⏳ {get_text(user_id, 'monitor', 'scheduler_will_be_added')}\n\n"
+        text += f"🚀 *{get_text(user_id, 'monitor', 'use_commands')}*\n"
+        text += f"/sites - {get_text(user_id, 'monitor', 'check_sites')}\n"
+        text += f"/status - {get_text(user_id, 'monitor', 'full_check')}\n"
+        text += f"/status301, /status300 - {get_text(user_id, 'monitor', 'check_servers')}"
+        
+        keyboard = [[InlineKeyboardButton(get_text(user_id, "common", "back"), callback_data="menu")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await send_or_edit_message(update, text, reply_markup=reply_markup)
+        
+        from database.monitoring_db import get_db
+        get_db().log_command(user_id, 'monitor_status')
+        
+    except Exception as e:
+        logger.error(f"Ошибка в monitor_status_command: {e}")
+        error_text = f"❌ {get_text(user_id, 'common', 'error')}: {str(e)}"
+        await send_or_edit_message(update, error_text)
+
+
+async def monitor_log_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Обработчик команды /monitor_log"""
+    user_id = get_user_id(update)
+    lang = language_manager.get_user_language(user_id)
+
+    try:
+        text = f"📋 *{get_text(user_id, 'monitoring', 'monitor_log')}:*\n\n"
+        text += "Здесь будет отображаться история изменений и событий мониторинга.\n\n"
+        text += "Функция находится в разработке.\n"
+        text += f"⏰ *Время:* {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+        
+        keyboard = [[InlineKeyboardButton(get_text(user_id, "common", "back"), callback_data="menu")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await send_or_edit_message(update, text, reply_markup=reply_markup)
+        
+        from database.monitoring_db import get_db
+        get_db().log_command(user_id, 'monitor_log')
+        
+    except Exception as e:
+        logger.error(f"Ошибка в monitor_log_command: {e}")
+        error_text = f"❌ {get_text(user_id, 'common', 'error')}: {str(e)}"
+        await send_or_edit_message(update, error_text)
+
+
+async def cleanup_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Обработчик команды /cleanup"""
+    user_id = get_user_id(update)
+    lang = language_manager.get_user_language(user_id)
+
+    try:
+        from database.monitoring_db import get_db
+        db = get_db()
+        
+        # Выполняем очистку
+        result = db.cleanup_old_checks()
+        
+        text = f"🧹 *{get_text(user_id, 'cleanup', 'title')}:*\n\n"
+        text += get_text(user_id, 'cleanup', 'result',
+                        site_checks=result['site_checks'],
+                        system_checks=result['system_checks'],
+                        alerts_resolved=result['alerts_resolved'])
+        
+        keyboard = [[InlineKeyboardButton(get_text(user_id, "common", "back"), callback_data="menu")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await send_or_edit_message(update, text, reply_markup=reply_markup)
+        db.log_command(user_id, 'cleanup')
+        
+    except Exception as e:
+        logger.error(f"Ошибка в cleanup_command: {e}")
+        error_text = f"❌ {get_text(user_id, 'common', 'error')}: {str(e)}"
+        await send_or_edit_message(update, error_text)
+

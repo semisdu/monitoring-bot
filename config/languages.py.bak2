@@ -1,0 +1,280 @@
+#!/usr/bin/env python3
+"""
+Мультиязычные тексты для Monitoring Bot
+Поддержка: русский, украинский, английский
+"""
+
+TEXTS = {
+    "ru": {
+        # Основные команды
+        "start": {
+            "welcome": "👋 Привет, {name}!",
+            "description": "🤖 Я - Monitoring Bot, система мониторинга инфраструктуры.",
+            "features": "📊 Доступные функции:\n• Проверка статуса серверов\n• Мониторинг Docker контейнеров\n• Проверка доступности сайтов\n• Анализ логов в реальном времени\n• Управление инфраструктурой",
+            "help_hint": "📋 Используй /help для списка команд\n🔍 Или выбери действие из меню ниже:"
+        },
+        "help": {
+            "title": "📋 **ПОЛНЫЙ СПИСОК КОМАНД**",
+            "basic": "🏁 **Основные команды:**",
+            "status": "🔍 **Проверка серверов:**",
+            "sites": "🌐 **Проверка сайтов:**",
+            "docker": "🐳 **Управление Docker:**",
+            "monitoring": "📊 **Мониторинг и логи:**",
+            "logs": "🚨 **Мониторинг логов:**",
+            "info": "ℹ️ **Информация:**",
+            "infra": "🏗 **Инфраструктура (если настроено):**"
+        },
+        
+        # Статус
+        "status": {
+            "checking_301": "🔍 Проверяю статус SERV301...",
+            "checking_300": "🔍 Проверяю статус SERV300...",
+            "checking_all": "🔍 Проверяю все серверы...",
+            "in_development": "Эта команда находится в разработке.",
+            "title": "📊 Статус серверов",
+            "app_servers": "🚀 Серверы приложений",
+            "virtual_machines": "💻 Виртуальные машины"
+        },
+
+        # Docker
+        "docker": {
+            "checking": "Проверяю Docker...",
+            "checking_status": "проверка статуса Docker",
+            "status": "Статус Docker",
+            "running": "Запущено",
+            "check_serv300": "Проверить SERV300",
+            "check_serv301": "Проверить SERV301",
+            "error": "ошибка"
+        },
+
+        # Proxmox VE
+        "pve": {
+            "checking": "Проверяю Proxmox VE...",
+            "checking_status": "проверка статуса Proxmox VE",
+            "status": "Статус Proxmox VE",
+            "online": "доступен",
+            "offline": "недоступен",
+            "no_servers": "Серверы Proxmox VE не настроены"
+        },
+
+        # Proxmox Backup Server
+        "pbs": {
+            "checking": "Проверяю Proxmox Backup Server...",
+            "checking_status": "проверка статуса Proxmox Backup Server",
+            "status": "Статус Proxmox Backup Server",
+            "online": "доступен",
+            "offline": "недоступен",
+            "no_servers": "Серверы Proxmox Backup Server не настроены"
+        },
+        
+        # Меню
+        "menu": {
+            "status": "📊 Статус серверов",
+            "docker": "🐳 Docker",
+            "sites": "🌐 Сайты",
+            "help": "📋 Помощь",
+            "help_text": "🤖 **Monitoring Bot** - система мониторинга инфраструктуры\n\n📋 **Основные команды:**\n• /start - Главное меню\n• /help - Эта справка\n• /sites - Проверка всех сайтов\n\n🎯 **Быстрый доступ из меню:**\n• 📊 Статус серверов - проверка SERV301/SERV300\n• 🐳 Docker - статус и управление контейнерами  \n• 🌐 Сайты - проверка доступности\n• 🏗 PVE - мониторинг Proxmox VE\n• 💾 PBS - мониторинг Proxmox Backup Server\n• 🌍 Язык - смена языка интерфейса\n\n⚡ **Автоматический мониторинг:**\n• Регулярные проверки сайтов\n• Контроль Docker контейнеров\n• Отслеживание состояния серверов",
+            "language": "🌍 Язык",
+            "pve": "🏗 PVE",
+            "pbs": "💾 PBS"
+        },
+        # Сайты
+        "sites": {
+            "title": "🌐 Проверка сайтов",
+            "site1": "https://er.edu-post-diploma.kharkov.ua/",
+            "site2": "https://prof.edu-post-diploma.kharkov.ua/", 
+            "site3": "https://site3.example.com/ (тестовый)",
+            "site4": "https://site4.example.com/ (тестовый)"
+        },
+        
+        # Выбор языка
+        "language": {
+            "select": "🌍 Выберите язык / Оберіть мову / Select language:",
+            "changed": "✅ Язык изменен на: {language}",
+            "current": "Текущий язык: {language}"
+        },
+        
+        # Общие
+        "common": {
+            "back": "Назад",
+            "error": "❌ Ошибка",
+            "success": "✅ Успешно",
+            "loading": "⏳ Загрузка...",
+            "not_implemented": "⏳ Эта функция в разработке"
+        }
+    },
+    
+    "uk": {
+        # Основні команди
+        "start": {
+            "welcome": "👋 Вітаю, {name}!",
+            "description": "🤖 Я - Monitoring Bot, система моніторингу інфраструктури.",
+            "features": "📊 Доступні функції:\n• Перевірка статусу серверів\n• Моніторинг Docker контейнерів\n• Перевірка доступності сайтів\n• Аналіз логів у реальному часі\n• Управління інфраструктурою",
+            "help_hint": "📋 Використовуй /help для списку команд\n🔍 Або оберіть дію з меню нижче:"
+        },
+        "help": {
+            "title": "📋 **ПОВНИЙ СПИСОК КОМАНД**",
+            "basic": "🏁 **Основні команди:**",
+            "status": "🔍 **Перевірка серверів:**",
+            "sites": "🌐 **Перевірка сайтів:**",
+            "docker": "🐳 **Управління Docker:**",
+            "monitoring": "📊 **Моніторинг і логи:**",
+            "logs": "🚨 **Моніторинг логів:**",
+            "info": "ℹ️ **Інформація:**",
+            "infra": "🏗 **Інфраструктура (якщо налаштовано):**"
+        },
+        
+        # Статус
+        "status": {
+            "checking_301": "🔍 Перевіряю статус SERV301...",
+            "checking_300": "🔍 Перевіряю статус SERV300...",
+            "checking_all": "🔍 Перевіряю всі сервери...",
+            "in_development": "Ця команда знаходиться в розробці."
+        },
+        
+        # Меню
+        "menu": {
+            "status": "📊 Статус серверів",
+            "docker": "🐳 Docker",
+            "sites": "🌐 Сайти",
+            "help": "📋 Допомога",
+            "help_text": "🤖 **Monitoring Bot** - система моніторингу інфраструктури\n\n📋 **Основні команди:**\n• /start - Головне меню  \n• /help - Ця довідка\n• /sites - Перевірка всіх сайтів\n\n🎯 **Швидкий доступ з меню:**\n• 📊 Статус серверів - перевірка SERV301/SERV300\n• 🐳 Docker - статус та управління контейнерами\n• 🌐 Сайти - перевірка доступності\n• 🏗 PVE - моніторинг Proxmox VE\n• 💾 PBS - моніторинг Proxmox Backup Server\n• 🌍 Мова - зміна мови інтерфейсу\n\n⚡ **Автоматичний моніторинг:**\n• Регулярні перевірки сайтів\n• Контроль Docker контейнерів\n• Відстеження стану серверів",
+            "language": "🌍 Мова",
+            "pve": "🏗 PVE",
+            "pbs": "💾 PBS"
+        },
+        # Сайти
+        "sites": {
+            "title": "🌐 Перевірка сайтів",
+            "site1": "https://er.edu-post-diploma.kharkov.ua/",
+            "site2": "https://prof.edu-post-diploma.kharkov.ua/",
+            "site3": "https://site3.example.com/ (тестовый)", 
+            "site4": "https://site4.example.com/ (тестовый)"
+        },
+        
+        # Вибір мови
+        "language": {
+            "select": "🌍 Виберіть мову / Выберите язык / Select language:",
+            "changed": "✅ Мову змінено на: {language}",
+            "current": "Поточна мова: {language}"
+        },
+        
+        # Загальні
+        "common": {
+            "back": "Назад",
+            "error": "❌ Помилка",
+            "success": "✅ Успішно",
+            "loading": "⏳ Завантаження...",
+            "not_implemented": "⏳ Ця функція в розробці"
+        }
+    },
+    
+    "en": {
+        # Basic commands
+        "start": {
+            "welcome": "👋 Hello, {name}!",
+            "description": "🤖 I am Monitoring Bot, infrastructure monitoring system.",
+            "features": "📊 Available features:\n• Server status checking\n• Docker containers monitoring\n• Website availability checking\n• Real-time log analysis\n• Infrastructure management",
+            "help_hint": "📋 Use /help for command list\n🔍 Or choose action from menu below:"
+        },
+        "help": {
+            "title": "📋 **FULL COMMAND LIST**",
+            "basic": "🏁 **Basic commands:**",
+            "status": "🔍 **Server checking:**",
+            "sites": "🌐 **Website checking:**",
+            "docker": "🐳 **Docker management:**",
+            "monitoring": "📊 **Monitoring and logs:**",
+            "logs": "🚨 **Log monitoring:**",
+            "info": "ℹ️ **Information:**",
+            "infra": "🏗 **Infrastructure (if configured):**"
+        },
+        
+        # Status
+        "status": {
+            "checking_301": "🔍 Checking SERV301 status...",
+            "checking_300": "🔍 Checking SERV300 status...",
+            "checking_all": "🔍 Checking all servers...",
+            "in_development": "This command is in development.",
+            "title": "📊 Server status",
+            "app_servers": "🚀 Application servers",
+            "virtual_machines": "💻 Virtual machines"
+        },
+
+        # Docker
+        "docker": {
+            "checking": "Перевіряю Docker...",
+            "checking_status": "перевірка статусу Docker",
+            "status": "Статус Docker",
+            "running": "Запущено",
+            "check_serv300": "Перевірити SERV300",
+            "check_serv301": "Перевірити SERV301",
+            "error": "помилка"
+        },
+
+        # Proxmox VE
+        "pve": {
+            "checking": "Checking Proxmox VE...",
+            "checking_status": "Proxmox VE status checking",
+            "status": "Proxmox VE Status",
+            "online": "online",
+            "offline": "offline",
+            "no_servers": "Proxmox VE servers not configured"
+        },
+
+        # Proxmox Backup Server
+        "pbs": {
+            "checking": "Checking Proxmox Backup Server...",
+            "checking_status": "Proxmox Backup Server status checking",
+            "status": "Proxmox Backup Server Status",
+            "online": "online",
+            "offline": "offline",
+            "no_servers": "Proxmox Backup Server servers not configured"
+        },
+        
+        # Menu
+        "menu": {
+            "status": "📊 Server status",
+            "docker": "🐳 Docker",
+            "sites": "🌐 Sites",
+            "help": "📋 Help",
+            "help_text": "🤖 **Monitoring Bot** - infrastructure monitoring system\n\n📋 **Basic commands:**\n• /start - Main menu\n• /help - This help\n• /sites - Check all sites\n\n🎯 **Quick access from menu:**\n• 📊 Server status - check SERV301/SERV300\n• 🐳 Docker - container status and management\n• 🌐 Sites - availability checks\n• 🏗 PVE - Proxmox VE monitoring\n• 💾 PBS - Proxmox Backup Server monitoring\n• 🌍 Language - interface language change\n\n⚡ **Automatic monitoring:**\n• Regular site checks\n• Docker container control\n• Server status tracking",
+            "language": "🌍 Language",
+            "pve": "🏗 PVE",
+            "pbs": "💾 PBS"
+        },
+        # Sites
+        "sites": {
+            "title": "🌐 Website checking",
+            "site1": "https://er.edu-post-diploma.kharkov.ua/",
+            "site2": "https://prof.edu-post-diploma.kharkov.ua/",
+            "site3": "https://site3.example.com/ (тестовый)",
+            "site4": "https://site4.example.com/ (тестовый)"
+        },
+        
+        # Language selection
+        "language": {
+            "select": "🌍 Select language / Оберіть мову / Выберите язык:",
+            "changed": "✅ Language changed to: {language}",
+            "current": "Current language: {language}"
+        },
+        
+        # Common
+        "common": {
+            "back": "Назад",
+            "error": "❌ Error",
+            "success": "✅ Success",
+            "loading": "⏳ Loading...",
+            "not_implemented": "⏳ This feature is in development"
+        }
+    }
+}
+
+# Названия языков для отображения
+LANGUAGE_NAMES = {
+    "ru": "🇷🇺 Русский",
+    "uk": "🇺🇦 Українська", 
+    "en": "🇬🇧 English"
+}
+
+# Язык по умолчанию
+DEFAULT_LANGUAGE = "ru"

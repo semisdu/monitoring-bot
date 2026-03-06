@@ -1,0 +1,111 @@
+# Monitoring Bot Configuration
+# Скопируйте в config.yml и заполните своими данными
+
+telegram:
+  token: "YOUR_BOT_TOKEN_HERE"  # Получить у @BotFather
+  admin_chat_id: YOUR_CHAT_ID   # Ваш Telegram ID (узнать у @userinfobot)
+
+paths:
+  base_dir: "/opt/monitoring-bot"  # Путь установки
+  logs: "logs"
+  database: "database"
+  ssh_keys: "/home/username/.ssh"  # Путь к SSH ключам
+
+servers:
+  # Пример сервера с Docker
+  - id: "example-server"
+    name: "Example Server"
+    host: "192.168.1.100"
+    user: "username"
+    port: 22
+    ssh_key: "id_rsa"
+    docker_enabled: true
+    containers:
+      - name: "postgres"
+        service_name: "postgres"
+        critical: true
+      - name: "app"
+        service_name: "web"
+        critical: true
+
+  # Пример PVE сервера
+  - id: "pve-example"
+    name: "PVE Hypervisor"
+    host: "192.168.1.99"
+    user: "username"
+    port: 22
+    ssh_key: "id_rsa"
+    type: "pve"
+    api_enabled: true
+    api_host: "192.168.1.99"
+    api_port: 8006
+    api_user: "root@pam"
+    api_verify_ssl: false
+    vms: [100, 101]
+
+  # Пример PBS сервера
+  - id: "pbs-example"
+    name: "Backup Server"
+    host: "192.168.1.37"
+    user: "root"
+    port: 22
+    ssh_key: "id_rsa"
+    type: "pbs"
+    api_enabled: true
+    api_host: "192.168.1.37"
+    api_port: 8007
+    api_user: "root@pbs"
+    api_verify_ssl: false
+    datastore: "local"
+
+sites:
+  - name: "Example Site"
+    url: "https://example.com"
+    server_id: "example-server"
+    check_interval: 300
+    critical: true
+    expected_status: 200
+    timeout: 10
+
+schedule:
+  status_check: "*/5 * * * *"
+  log_check: "*/5 * * * *"
+  daily_report: "0 9 * * *"
+  cleanup: "0 2 * * 1"
+  vm_check: "0 */1 * * *"
+  backup_check: "0 6 * * *"
+  docker_check: "*/10 * * * *"
+  site_check: "*/15 * * * *"
+
+alert_config:
+  disk_warning_percent: 80
+  disk_critical_percent: 90
+  memory_warning_percent: 85
+  memory_critical_percent: 95
+  cpu_warning_percent: 80
+  cpu_critical_percent: 90
+  site_timeout_seconds: 10
+  container_restart_threshold: 3
+  error_count_threshold: 10
+  vm_cpu_threshold: 80
+  vm_memory_threshold: 85
+  backup_age_warning_hours: 48
+  backup_age_critical_hours: 72
+
+logging:
+  level: "INFO"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  max_size_mb: 10
+  backup_count: 5
+
+features:
+  enable_infra_commands: true
+  enable_log_monitoring: false
+  enable_auto_restart: false
+  enable_daily_reports: true
+  enable_backup: true
+  enable_proxmox: true
+  enable_vm_monitoring: true
+  enable_backup_check: true
+  enable_docker: true
+  enable_site_check: true

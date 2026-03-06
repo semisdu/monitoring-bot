@@ -1,0 +1,554 @@
+#!/usr/bin/env python3
+"""
+Языковые тексты для Monitoring Bot
+Поддержка: русский, украинский, английский
+"""
+
+TEXTS = {
+    "ru": {
+        # Основные команды
+        "start": {
+            "welcome": "👋 Привет, {name}!",
+            "description": "🤖 Я - Monitoring Bot, система мониторинга инфраструктуры.",
+            "features": "📊 Доступные функции:\n• Проверка статуса серверов\n• Мониторинг Docker контейнеров\n• Проверка доступности сайтов\n• Анализ логов в реальном времени\n• Управление инфраструктурой",
+            "help_hint": "📋 Используй /help для списка команд\n🔍 Или выбери действие из меню ниже:"
+        },
+
+        # Помощь
+        "help": {
+            "title": "📋 **ПОЛНЫЙ СПИСОК КОМАНД**",
+            "basic": "🏁 **Основные команды:**",
+            "status": "🔍 **Проверка серверов:**",
+            "sites": "🌐 **Проверка сайтов:**",
+            "docker": "🐳 **Управление Docker:**",
+            "monitoring": "📊 **Мониторинг и логи:**",
+            "logs": "🚨 **Мониторинг логов:**",
+            "info": "ℹ **Информация:**",
+            "infra": "🏗 **Инфраструктура (если настроено):**"
+        },
+
+        # Статус
+        "status": {
+            "checking_301": "🔍 Проверяю статус SERV301...",
+            "checking_300": "🔍 Проверяю статус SERV300...",
+            "checking_all": "🔍 Проверяю все серверы...",
+            "in_development": "Эта команда находится в разработке.",
+            "status": "Статус",
+            "online": "Онлайн",
+            "offline": "Оффлайн",
+            "disk": "Диск",
+            "memory": "Память",
+            "free": "свободно",
+            "uptime": "Время работы",
+            "all_servers": "Все серверы 🔍",
+            "select_server": "Выберите сервер для проверки",
+            "all_servers_status": "Статус всех серверов",
+            "total_servers": "Всего серверов",
+            "checking_server": "при проверке сервера",
+            "checking_all_servers": "при проверке всех серверов"
+        },
+
+        # Меню
+        "menu": {
+            "pve": "🏗 PVE",
+            "pbs": "💾 PBS",
+            "status": "📊 Статус серверов",
+            "docker": "🐳 Docker",
+            "sites": "🌐 Сайты",
+            "help": "📋 Помощь",
+            "language": "🌍 Язык",
+            "open": "📱 Меню",
+            "title": "Главное меню",
+            "select_action": "Выберите действие:"
+        },
+
+        # Выбор языка
+        "language": {
+            "select": "🌍 Выберите язык:",
+            "changed": "✅ Язык изменен на: {language}",
+            "current": "Текущий язык: {language}",
+            "changing": "при смене языка"
+        },
+
+        # Общие тексты
+        "common": {
+            "loading": "⏳ Загрузка...",
+            "success": "✅ Успешно!",
+            "error": "❌ Ошибка",
+            "not_implemented": "🚧 Эта функция еще в разработке.",
+            "back": "↩ Назад",
+            "close": "❌ Закрити",
+            "cancel": "🚫 Скасувати",
+            "retry": "🔄 Спробувати ще раз",
+            "select_option": "🔘 Оберіть опцію:",
+            "no_data": "📭 Дані відсутні",
+            "unknown_error": "❌ Невідома помилка",
+            "access_denied": "⛔ Доступ заборонено",
+            "unknown_command": "Неизвестная команда"
+        },
+
+        # Помощь (команды)
+        "help_texts": {
+            "start": "/start - Запустить бота и показать приветствие",
+            "help": "/help - Показать эту справку",
+            "menu": "/menu - Показать главное меню",
+            "status": "/status - Меню проверки статуса серверов",
+            "status301": "/status301 - Проверить статус SERV301",
+            "status300": "/status300 - Проверить статус SERV300",
+            "disk": "/disk - Информация о диске",
+            "docker": "/docker - Меню Docker контейнеров",
+            "site": "/site - Проверить статус сайтов",
+            "version": "/version - Информация о версии",
+            "logs": "/logs - Показать логи (только админ)"
+        },
+
+        # Docker
+        "docker": {
+            "checking": "Проверяю Docker контейнеры...",
+            "checking_server": "Проверяю Docker контейнеры на сервере",
+            "checking_server_docker": "при проверке Docker на сервере",
+            "checking_status": "при проверке статуса Docker",
+            "containers_on": "Контейнеры на сервере",
+            "critical": "Критический",
+            "summary": "Статистика",
+            "running": "работают",
+            "status_all": "Статус всех Docker",
+            "serv301_containers": "Контейнеры SERV301",
+            "serv300_containers": "Контейнеры SERV300",
+            "docker_menu": "Меню Docker",
+            "select_action": "Выберите действие:",
+            "critical_failed": "критических не работают",
+            "total_servers": "Всего серверов",
+        },
+
+        # Proxmox VE
+        "pve": {
+            "checking": "Проверяю Proxmox VE...",
+            "status": "Статус Proxmox VE",
+            "online": "Онлайн",
+            "offline": "Оффлайн",
+            "no_servers": "Нет настроенных серверов Proxmox VE",
+            "checking_status": "при проверке статуса Proxmox VE",
+            "vms": "Виртуальные машины",
+            "vms_total": "Всего VM",
+            "vms_running": "Запущено VM",
+            "storage": "Хранилище",
+            "nodes": "Ноды",
+            "clusters": "Кластеры"
+        },
+
+        # Proxmox Backup Server
+        "pbs": {
+            "checking": "Проверяю Proxmox Backup Server...",
+            "status": "Статус Proxmox Backup Server",
+            "online": "Онлайн",
+            "offline": "Оффлайн",
+            "no_servers": "Нет настроенных серверов Proxmox Backup Server",
+            "checking_status": "при проверке статуса Proxmox Backup Server",
+            "backups": "Бэкапы",
+            "last_backup": "Последний бэкап",
+            "total_backups": "Всего бэкапов",
+            "datastores": "Хранилища данных",
+            "backup_size": "Размер бэкапов"
+        },
+
+        # Диск
+        "disk": {
+            "title": "Информация о диске",
+            "filesystem": "Файловая система",
+            "used_percent": "Использовано",
+            "total": "Всего",
+            "used": "Использовано",
+            "free": "Свободно",
+            "getting_info": "при получении информации о диске"
+        },
+
+        # Логи
+        "logs": {
+            "title": "Последние логи",
+            "reading": "при чтении логов"
+        },
+
+        # Версия
+        "version": {
+            "info": "🤖 **Monitoring Bot**\n📦 Версия: {version}\n🐍 Python: {python_version}\n👨‍💻втор: {author}\n📅 Обновлено: 13.01.2026\n📞 Поддержка: @SemisDu"
+        },
+
+        # Серверы
+        "servers": {
+            "serv301": "SERV301 (основной сервер)",
+            "serv300": "SERV300 (резервный сервер)",
+            "server102": "SERVER102 (NGINX VM)",
+            "pve_main": "PVE-MAIN (hypervisor)",
+            "pbs_backup": "PBS-BACKUP (backup server)"
+        }
+    },
+
+    "uk": {
+        # Основні команди
+        "start": {
+            "welcome": "👋 Вітаю, {name}!",
+            "description": "🤖 Я - Monitoring Bot, система моніторингу інфраструктури.",
+            "features": "📊 Доступні функції:\n• Перевірка статусу серверів\n• Моніторинг Docker контейнерів\n• Перевірка доступності сайтів\n• Аналіз логів у реальному часі\n• Управління інфраструктурою",
+            "help_hint": "📋 Використовуй /help для списку команд\n🔍 Або оберіть дію з меню нижче:"
+        },
+
+        # Поміч
+        "help": {
+            "title": "📋 **ПОВНИЙ СПИСОК КОМАНД**",
+            "basic": "🏁 **Основні команди:**",
+            "status": "🔍 **Перевірка серверів:**",
+            "sites": "🌐 **Перевірка сайтів:**",
+            "docker": "🐳 **Управління Docker:**",
+            "monitoring": "📊 **Моніторинг і логи:**",
+            "logs": "🚨 **Моніторинг логів:**",
+            "info": "ℹ **Інформація:**",
+            "infra": "🏗 **Інфраструктура (якщо налаштовано):**"
+        },
+
+        # Статус
+        "status": {
+            "checking_301": "🔍 Перевіряю статус SERV301...",
+            "checking_300": "🔍 Перевіряю статус SERV300...",
+            "checking_all": "🔍 Перевіряю всі сервери...",
+            "in_development": "Ця команда знаходиться в розробці.",
+            "status": "Статус",
+            "online": "Онлайн",
+            "offline": "Оффлайн",
+            "disk": "Диск",
+            "memory": "Пам'ять",
+            "free": "вільно",
+            "uptime": "Час роботи",
+            "all_servers": "Всі сервери 🔍",
+            "select_server": "Оберіть сервер для перевірки",
+            "all_servers_status": "Статус всіх серверів",
+            "total_servers": "Всього серверів",
+            "checking_server": "при перевірці сервера",
+            "checking_all_servers": "при перевірці всіх серверів"
+        },
+
+        # Меню
+        "menu": {
+            "pve": "🏗 PVE",
+            "pbs": "💾 PBS",
+            "status": "📊 Статус серверів",
+            "docker": "🐳 Docker",
+            "sites": "🌐 Сайти",
+            "help": "📋 Допомога",
+            "language": "🌍 Мова",
+            "open": "📱 Меню",
+            "title": "Головне меню",
+            "select_action": "Оберіть дію:"
+        },
+
+        # Вибір мови
+        "language": {
+            "select": "🌍 Оберіть мову:",
+            "changed": "✅ Мову змінено на: {language}",
+            "current": "Поточна мова: {language}",
+            "changing": "при зміні мови"
+        },
+
+        # Спільні тексти
+        "common": {
+            "loading": "⏳ Завантаження...",
+            "success": "✅ Успішно!",
+            "error": "❌ Помилка",
+            "not_implemented": "🚧 Ця функція ще в розробці.",
+            "back": "↩ Назад",
+            "close": "❌ Закрити",
+            "cancel": "🚫 Скасувати",
+            "retry": "🔄 Спробувати ще раз",
+            "select_option": "🔘 Оберіть опцію:",
+            "no_data": "📭 Дані відсутні",
+            "unknown_error": "❌ Невідома помилка",
+            "access_denied": "⛔ Доступ заборонено",
+            "unknown_command": "Невідома команда"
+        },
+
+        # Поміч (команди)
+        "help_texts": {
+            "start": "/start - Запустити бота та показати привітання",
+            "help": "/help - Показати цю довідку",
+            "menu": "/menu - Показати головне меню",
+            "status": "/status - Меню перевірки статусу серверів",
+            "status301": "/status301 - Перевірити статус SERV301",
+            "status300": "/status300 - Перевірити статус SERV300",
+            "disk": "/disk - Інформація про диск",
+            "docker": "/docker - Меню Docker контейнерів",
+            "site": "/site - Перевірити статус сайтів",
+            "version": "/version - Інформація про версію",
+            "logs": "/logs - Показати логи (тільки адмін)"
+        },
+
+        # Docker
+        "docker": {
+            "checking": "Перевіряю Docker контейнери...",
+            "checking_server": "Перевіряю Docker контейнери на сервері",
+            "checking_server_docker": "при перевірці Docker на сервері",
+            "checking_status": "при перевірці статусу Docker",
+            "containers_on": "Контейнери на сервері",
+            "critical": "Критичний",
+            "summary": "Статистика",
+            "running": "працюють",
+            "status_all": "Статус всіх Docker",
+            "serv301_containers": "Контейнери SERV301",
+            "serv300_containers": "Контейнери SERV300",
+            "docker_menu": "Меню Docker",
+            "select_action": "Оберіть дію:",
+            "critical_failed": "критичних не працюють",
+            "total_servers": "Всього серверів"
+        },
+
+        # Proxmox VE
+        "pve": {
+            "checking": "Перевіряю Proxmox VE...",
+            "status": "Статус Proxmox VE",
+            "online": "Онлайн",
+            "offline": "Оффлайн",
+            "no_servers": "Немає налаштованих серверів Proxmox VE",
+            "checking_status": "при перевірці статусу Proxmox VE",
+            "vms": "Віртуальні машини",
+            "vms_total": "Всього VM",
+            "vms_running": "Запущено VM",
+            "storage": "Сховище",
+            "nodes": "Ноди",
+            "clusters": "Кластери"
+        },
+
+        # Proxmox Backup Server
+        "pbs": {
+            "checking": "Перевіряю Proxmox Backup Server...",
+            "status": "Статус Proxmox Backup Server",
+            "online": "Онлайн",
+            "offline": "Оффлайн",
+            "no_servers": "Немає налаштованих серверів Proxmox Backup Server",
+            "checking_status": "при перевірці статусу Proxmox Backup Server",
+            "backups": "Бекапи",
+            "last_backup": "Останній бекап",
+            "total_backups": "Всього бекапів",
+            "datastores": "Сховища даних",
+            "backup_size": "Розмір бекапів"
+        },
+
+        # Диск
+        "disk": {
+            "title": "Інформація про диск",
+            "filesystem": "Файлова система",
+            "used_percent": "Використано",
+            "total": "Всього",
+            "used": "Використано",
+            "free": "Вільно",
+            "getting_info": "при отриманні інформації про диск"
+        },
+
+        # Логи
+        "logs": {
+            "title": "Останні логи",
+            "reading": "при читанні логів"
+        },
+
+        # Версія
+        "version": {
+            "info": "🤖 **Monitoring Bot**\n📦 Версія: {version}\n🐍 Python: {python_version}\n👨‍💻втор: {author}\n📅 Оновлено: 13.01.2026\n📞 Підтримка: @SemisDu"
+        },
+
+        # Сервери
+        "servers": {
+            "serv301": "SERV301 (основний сервер)",
+            "serv300": "SERV300 (резервний сервер)",
+            "server102": "SERVER102 (NGINX VM)",
+            "pve_main": "PVE-MAIN (hypervisor)",
+            "pbs_backup": "PBS-BACKUP (backup server)"
+        }
+    },
+
+    "en": {
+        # Basic commands
+        "start": {
+            "welcome": "👋 Hello, {name}!",
+            "description": "🤖 I am Monitoring Bot, infrastructure monitoring system.",
+            "features": "📊 Available features:\n• Server status check\n• Docker containers monitoring\n• Site availability check\n• Real-time log analysis\n• Infrastructure management",
+            "help_hint": "📋 Use /help for command list\n🔍 Or select action from menu below:"
+        },
+
+        # Help
+        "help": {
+            "title": "📋 **FULL COMMAND LIST**",
+            "basic": "🏁 **Basic commands:**",
+            "status": "🔍 **Server check:**",
+            "sites": "🌐 **Site check:**",
+            "docker": "🐳 **Docker management:**",
+            "monitoring": "📊 **Monitoring and logs:**",
+            "logs": "🚨 **Log monitoring:**",
+            "info": "ℹ **Information:**",
+            "infra": "🏗 **Infrastructure (if configured):**"
+        },
+
+        # Status
+        "status": {
+            "checking_301": "🔍 Checking SERV301 status...",
+            "checking_300": "🔍 Checking SERV300 status...",
+            "checking_all": "🔍 Checking all servers...",
+            "in_development": "This command is in development.",
+            "status": "Status",
+            "online": "Online",
+            "offline": "Offline",
+            "disk": "Disk",
+            "memory": "Memory",
+            "free": "free",
+            "uptime": "Uptime",
+            "all_servers": "All servers 🔍",
+            "select_server": "Select server to check",
+            "all_servers_status": "Status of all servers",
+            "total_servers": "Total servers",
+            "checking_server": "when checking server",
+            "checking_all_servers": "when checking all servers"
+        },
+
+        # Menu
+        "menu": {
+            "pve": "🏗 PVE",
+            "pbs": "💾 PBS",
+            "status": "📊 Server status",
+            "docker": "🐳 Docker",
+            "sites": "🌐 Sites",
+            "help": "📋 Help",
+            "language": "🌍 Language",
+            "open": "📱 Menu",
+            "title": "Main Menu",
+            "select_action": "Select action:"
+        },
+
+        # Language selection
+        "language": {
+            "select": "🌍 Select language:",
+            "changed": "✅ Language changed to: {language}",
+            "current": "Current language: {language}",
+            "changing": "when changing language"
+        },
+
+        # Common
+        "common": {
+            "loading": "⏳ Loading...",
+            "success": "✅ Success",
+            "error": "❌ Error",
+            "not_implemented": "⏳ This feature is in development",
+            "back": "↩ Back",
+            "close": "❌ Close",
+            "cancel": "🚫 Cancel",
+            "retry": "🔄 Try again",
+            "select_option": "🔘 Select option:",
+            "no_data": "📭 No data",
+            "unknown_error": "❌ Unknown error",
+            "access_denied": "⛔ Access denied",
+            "unknown_command": "Unknown command"
+        },
+
+        # Help (commands)
+        "help_texts": {
+            "start": "/start - Start bot and show welcome",
+            "help": "/help - Show this help",
+            "menu": "/menu - Show main menu",
+            "status": "/status - Server status check menu",
+            "status301": "/status301 - Check SERV301 status",
+            "status300": "/status300 - Check SERV300 status",
+            "disk": "/disk - Disk information",
+            "docker": "/docker - Docker containers menu",
+            "site": "/site - Check site status",
+            "version": "/version - Version information",
+            "logs": "/logs - Show logs (admin only)"
+        },
+
+        # Docker
+        "docker": {
+            "checking": "Checking Docker containers...",
+            "checking_server": "Checking Docker containers on server",
+            "checking_server_docker": "when checking Docker on server",
+            "checking_status": "when checking Docker status",
+            "containers_on": "Containers on server",
+            "critical": "Critical",
+            "summary": "Summary",
+            "running": "running",
+            "status_all": "All Docker status",
+            "serv301_containers": "SERV301 containers",
+            "serv300_containers": "SERV300 containers",
+            "docker_menu": "Docker Menu",
+            "select_action": "Select action:",
+            "critical_failed": "critical failed",
+            "total_servers": "Total servers",
+        },
+
+        # Proxmox VE
+        "pve": {
+            "checking": "Checking Proxmox VE...",
+            "status": "Proxmox VE status",
+            "online": "Online",
+            "offline": "Offline",
+            "no_servers": "No Proxmox VE servers configured",
+            "checking_status": "when checking Proxmox VE status",
+            "vms": "Virtual machines",
+            "vms_total": "Total VMs",
+            "vms_running": "Running VMs",
+            "storage": "Storage",
+            "nodes": "Nodes",
+            "clusters": "Clusters"
+        },
+
+        # Proxmox Backup Server
+        "pbs": {
+            "checking": "Checking Proxmox Backup Server...",
+            "status": "Proxmox Backup Server status",
+            "online": "Online",
+            "offline": "Offline",
+            "no_servers": "No Proxmox Backup Server servers configured",
+            "checking_status": "when checking Proxmox Backup Server status",
+            "backups": "Backups",
+            "last_backup": "Last backup",
+            "total_backups": "Total backups",
+            "datastores": "Datastores",
+            "backup_size": "Backup size"
+        },
+
+        # Disk
+        "disk": {
+            "title": "Disk information",
+            "filesystem": "Filesystem",
+            "used_percent": "Used",
+            "total": "Total",
+            "used": "Used",
+            "free": "Free",
+            "getting_info": "when getting disk information"
+        },
+
+        # Logs
+        "logs": {
+            "title": "Recent logs",
+            "reading": "when reading logs"
+        },
+
+        # Version
+        "version": {
+            "info": "🤖 **Monitoring Bot**\n📦 Version: {version}\n🐍 Python: {python_version}\n👨‍💻uthor: {author}\n📅 Updated: 13.01.2026\n📞 Support: @SemisDu"
+        },
+
+        # Servers
+        "servers": {
+            "serv301": "SERV301 (main server)",
+            "serv300": "SERV300 (backup server)",
+            "server102": "SERVER102 (NGINX VM)",
+            "pve_main": "PVE-MAIN (hypervisor)",
+            "pbs_backup": "PBS-BACKUP (backup server)"
+        }
+    }
+}
+
+# Language names for display
+LANGUAGE_NAMES = {
+    "ru": "🇷🇺 Русский",
+    "uk": "🇺🇦 Українська",
+    "en": "🇬🇧 English"
+}
+
+# Default language
+DEFAULT_LANGUAGE = "ru"

@@ -1,0 +1,5 @@
+Collecting proxmoxer
+  Downloading proxmoxer-2.2.0-py3-none-any.whl.metadata (5.2 kB)
+Downloading proxmoxer-2.2.0-py3-none-any.whl (19 kB)
+Installing collected packages: proxmoxer
+Successfully installed proxmoxer-2.2.0

@@ -1,0 +1,24 @@
+[Unit]
+Description=Monitoring Bot Refactored
+After=network.target
+
+[Service]
+Type=simple
+User=semis
+WorkingDirectory=/home/semis/monitoring-bot/refactored
+Environment=PATH=/home/semis/monitoring-bot/refactored/venv/bin:/usr/local/bin:/usr/bin:/bin
+Environment=PYTHONPATH=/home/semis/monitoring-bot/refactored
+ExecStart=/home/semis/monitoring-bot/refactored/venv/bin/python /home/semis/monitoring-bot/refactored/run.py --log-file logs/bot.log
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+# Защита и безопасность
+ProtectSystem=full
+ReadWritePaths=/home/semis/monitoring-bot/refactored/logs /home/semis/monitoring-bot/refactored/database
+PrivateTmp=true
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

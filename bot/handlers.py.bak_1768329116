@@ -1,0 +1,729 @@
+#!/usr/bin/env python3
+"""
+Обработчики команд и callback-ов для Telegram бота мониторинга
+ПОЛНОСТЬЮ МУЛЬТИЯЗЫЧНАЯ ВЕРСИЯ
+"""
+import logging
+import sys
+from datetime import datetime, timedelta
+from typing import Optional
+
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.error import BadRequest
+from telegram.ext import ContextTypes, CommandHandler, CallbackQueryHandler
+
+from .language import get_text, language_manager, get_language_name
+from config.settings import TELEGRAM_TOKEN, FEATURES, get_docker_servers, get_pve_servers, get_pbs_servers
+
+logger = logging.getLogger(__name__)
+
+# ==================== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ====================
+
+def get_user_id(update: Update) -> int:
+    """Получить ID пользователя из обновления"""
+    if update.effective_user:
+        return update.effective_user.id
+    elif update.message and update.message.from_user:
+        return update.message.from_user.id
+    elif update.callback_query and update.callback_query.from_user:
+        return update.callback_query.from_user.id
+    else:
+        return 0  # Анонимный пользователь
+
+def format_server_status(status_data: dict, user_id: int) -> str:
+    """Форматировать статус сервера для отображения"""
+    if status_data.get('status') == 'error':
+        return f"❌ {get_text(user_id, 'common', 'error')}: {status_data.get('error', 'Unknown error')}"
+    
+    if status_data.get('status') == 'offline':
+        return f"🔴 {get_text(user_id, 'common', 'error')}: {status_data.get('error', 'Server offline')}"
+    
+    # Форматируем информацию о диске
+    disk = status_data.get('disk', {})
+    disk_alert = disk.get('alert', 'ok')
+    disk_icon = '🟢' if disk_alert == 'ok' else ('🟡' if disk_alert == 'warning' else '🔴')
+    
+    # Форматируем информацию о памяти
+    memory = status_data.get('memory', {})
+    memory_alert = memory.get('alert', 'ok')
+    memory_icon = '🟢' if memory_alert == 'ok' else ('🟡' if memory_alert == 'warning' else '🔴')
+    
+    # Форматируем информацию о CPU
+    cpu = status_data.get('cpu', {})
+    cpu_alert = cpu.get('alert', 'ok')
+    cpu_icon = '🟢' if cpu_alert == 'ok' else ('🟡' if cpu_alert == 'warning' else '🔴')
+    
+    # Форматируем текст
+    text = f"✅ *{status_data.get('name', 'Server')}*\n"
+    text += f"📊 *{get_text(user_id, 'status', 'status')}:* {get_text(user_id, 'status', 'online')}\n"
+    text += f"💾 *{get_text(user_id, 'status', 'disk')}:* {disk_icon} {disk.get('percent', 0)}% ({disk.get('free_gb', 0):.1f} GB {get_text(user_id, 'status', 'free')})\n"
+    text += f"🧠 *{get_text(user_id, 'status', 'memory')}:* {memory_icon} {memory.get('percent', 0)}% ({memory.get('free_gb', 0):.1f} GB {get_text(user_id, 'status', 'free')})\n"
+    text += f"⚡ *CPU:* {cpu_icon} {cpu.get('percent', 0)}%\n"
+    text += f"⏰ *{get_text(user_id, 'status', 'uptime')}:* {status_data.get('uptime', 'N/A')}"
+    
+    return text
+
+async def safe_edit_message_text(query, text, parse_mode=None, reply_markup=None):
+    """Безопасное редактирование сообщения с обработкой ошибки 'Message is not modified'"""
+    try:
+        await query.edit_message_text(
+            text=text,
+            parse_mode=parse_mode,
+            reply_markup=reply_markup
+        )
+    except BadRequest as e:
+        if "Message is not modified" in str(e):
+            # Игнорируем эту ошибку - сообщение уже имеет нужное содержимое
+            logger.debug("Сообщение не было изменено (уже имеет актуальный текст)")
+        else:
+            # Пробрасываем другие ошибки
+            raise
+
+async def send_or_edit_message(update: Update, text: str, parse_mode="Markdown", reply_markup=None):
+    """Отправить или отредактировать сообщение в зависимости от типа обновления"""
+    if update.message:
+        return await update.message.reply_text(text, parse_mode=parse_mode, reply_markup=reply_markup)
+    elif update.callback_query:
+        await update.callback_query.answer()
+        await safe_edit_message_text(update.callback_query, text, parse_mode=parse_mode, reply_markup=reply_markup)
+        return None
+
+# ==================== КОМАНДЫ ====================
+
+async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Обработчик команды /start"""
+    user_id = get_user_id(update)
+    
+    # Устанавливаем язык пользователя только если он еще не установлен
+    current_lang = language_manager.get_user_language(user_id)
+    if current_lang == 'ru':  # Если язык по умолчанию (пользователь новый)
+        if update.effective_user and update.effective_user.language_code:
+            lang = update.effective_user.language_code
+            if lang in ['ru', 'uk', 'en']:
+                language_manager.set_user_language(user_id, lang)
+    
+    welcome_text = get_text(user_id, 'start', 'welcome').format(
+        name=update.effective_user.first_name if update.effective_user else ''
+    )
+    
+    # Добавляем кнопку меню
+    keyboard = [[InlineKeyboardButton(get_text(user_id, 'menu', 'open'), callback_data='menu')]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await send_or_edit_message(update, welcome_text, reply_markup=reply_markup)
+    logger.info(f"Пользователь {user_id} запустил бота")
+
+async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Обработчик команды /help"""
+    user_id = get_user_id(update)
+    
+    # Формируем полный текст помощи
+    help_text = f"{get_text(user_id, 'help', 'title')}\n\n"
+    
+    # Добавляем команды
+    help_text += f"{get_text(user_id, 'help_texts', 'start')}\n"
+    help_text += f"{get_text(user_id, 'help_texts', 'help')}\n"
+    help_text += f"{get_text(user_id, 'help_texts', 'menu')}\n"
+    help_text += f"{get_text(user_id, 'help_texts', 'status')}\n"
+    help_text += f"{get_text(user_id, 'help_texts', 'status301')}\n"
+    help_text += f"{get_text(user_id, 'help_texts', 'status300')}\n"
+    help_text += f"{get_text(user_id, 'help_texts', 'disk')}\n"
+    help_text += f"{get_text(user_id, 'help_texts', 'docker')}\n"
+    help_text += f"{get_text(user_id, 'help_texts', 'site')}\n"
+    help_text += f"{get_text(user_id, 'help_texts', 'version')}\n"
+    help_text += f"{get_text(user_id, 'help_texts', 'logs')}\n"
+    
+    await send_or_edit_message(update, help_text)
+
+async def menu_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Обработчик команды /menu"""
+    user_id = get_user_id(update)
+    
+    keyboard = [
+        [InlineKeyboardButton(get_text(user_id, "menu", "status"), callback_data="status")],
+        [InlineKeyboardButton(get_text(user_id, "menu", "docker"), callback_data="docker")],
+        [InlineKeyboardButton(get_text(user_id, "menu", "sites"), callback_data="sites")],
+        [InlineKeyboardButton(get_text(user_id, "menu", "pve"), callback_data="pve_status"), InlineKeyboardButton(get_text(user_id, "menu", "pbs"), callback_data="pbs_status")],
+        [
+            InlineKeyboardButton(get_text(user_id, "menu", "language"), callback_data="language"),
+            InlineKeyboardButton(get_text(user_id, "menu", "help"), callback_data="help")
+        ]
+    ]
+    
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await send_or_edit_message(
+        update,
+        f"📱 *{get_text(user_id, 'menu', 'title')}:*\n{get_text(user_id, 'menu', 'select_action')}",
+        reply_markup=reply_markup
+    )
+
+async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Обработчик команды /status"""
+    # Показываем меню выбора сервера для проверки
+    keyboard = [
+        [
+            InlineKeyboardButton("SERV301 🖥", callback_data="check_serv301"),
+            InlineKeyboardButton("SERV300 🖥", callback_data="check_serv300")
+        ],
+        [
+            InlineKeyboardButton(get_text(user_id, "status", "all_servers"), callback_data="check_all"),
+            InlineKeyboardButton(get_text(user_id, "common", "back"), callback_data="back_to_menu")
+        ]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await send_or_edit_message(
+        update,
+        f"🔍 *{get_text(user_id, 'status', 'select_server')}:*",
+        reply_markup=reply_markup
+    )
+
+async def check_server_status(update: Update, context: ContextTypes.DEFAULT_TYPE, server_id: str) -> None:
+    """Проверка статуса сервера (общая функция)"""
+    user_id = get_user_id(update)
+    
+    try:
+        from checks.servers import get_server_checker
+        
+        # Показываем сообщение о проверке
+        checking_text = get_text(user_id, "status", f"checking_{server_id.replace('serv', '')}", default=f"Проверяю {server_id}...")
+        await send_or_edit_message(update, f"{checking_text} ⏳")
+        
+        checker = get_server_checker()
+        
+        if server_id == "serv301" and update.message and update.message.chat.id == user_id:
+            # Локальная проверка для SERV301
+            status = checker.check_local_server()
+        else:
+            # Удаленная проверка
+            status = checker.check_remote_server(server_id)
+        
+        text = format_server_status(status, user_id)
+        await send_or_edit_message(update, text)
+        
+    except Exception as e:
+        error_text = f"❌ {get_text(user_id, 'common', 'error')} {get_text(user_id, 'status', 'checking_server')} {server_id}: {str(e)}"
+        logger.error(f"Ошибка при проверке {server_id}: {e}")
+        await send_or_edit_message(update, error_text)
+
+
+
+async def check_server_docker(update: Update, context: ContextTypes.DEFAULT_TYPE, server_id: str) -> None:
+    """Проверка Docker контейнеров на сервере"""
+    user_id = get_user_id(update)
+    
+    try:
+        from checks.docker import get_docker_monitor
+        
+        await send_or_edit_message(update, f"{get_text(user_id, 'docker', 'checking_server')} {server_id}... ⏳")
+        
+        monitor = get_docker_monitor(server_id)
+        result = monitor.check_docker_containers()
+        
+        if result.get("status") == "success":
+            containers = result.get("containers", [])
+            
+            text = f"🐳 *{get_text(user_id, 'docker', 'containers_on')} {server_id}:*\n\n"
+            
+            for container in containers:
+                name = container.get("name", "Unknown")
+                status = container.get("status", "Unknown")
+                running = container.get("running", False)
+                critical = container.get("critical", False)
+                
+                if not running and critical:
+                    text += f"🔴 *{name}:* {status} ({get_text(user_id, 'docker', 'critical')})\n"
+                elif not running:
+                    text += f"🟡 *{name}:* {status}\n"
+                else:
+                    text += f"✅ *{name}:* {status}\n"
+            
+            total = result.get("total_containers", 0)
+            running = result.get("running_containers", 0)
+            text += f"\n📊 *{get_text(user_id, 'docker', 'summary')}:* {running}/{total} {get_text(user_id, 'docker', 'running')}"
+            
+        else:
+            text = f"❌ {get_text(user_id, 'common', 'error')} {get_text(user_id, 'docker', 'checking_server_docker')} {server_id}: {result.get('error', 'Unknown error')}"
+        
+        await send_or_edit_message(update, text)
+        
+    except Exception as e:
+        error_text = f"❌ {get_text(user_id, 'common', 'error')} {get_text(user_id, 'docker', 'checking_server_docker')} {server_id}: {str(e)}"
+        logger.error(f"Ошибка при проверке Docker на {server_id}: {e}")
+        await send_or_edit_message(update, error_text)
+
+
+async def status301_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Обработчик команды /status301"""
+    await check_server_status(update, context, "serv301")
+
+async def status300_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Обработчик команды /status300"""
+    await check_server_status(update, context, "serv300")
+
+async def check_all_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Обработчик команды /status или /check_all"""
+    user_id = get_user_id(update)
+    
+    try:
+        from checks.servers import get_server_checker
+        from config.settings import get_all_servers
+        
+        await send_or_edit_message(update, f"{get_text(user_id, 'status', 'checking_all')} ⏳")
+        
+        checker = get_server_checker()
+        all_servers = get_all_servers()
+        
+        results = []
+        for server_id in all_servers:
+            try:
+                status = checker.check_remote_server(server_id)
+                if status.get("status") == "online":
+                    results.append(f"✅ {status.get('name', server_id)} - {get_text(user_id, 'status', 'online')}")
+                else:
+                    results.append(f"❌ {status.get('name', server_id)} - {get_text(user_id, 'status', 'offline')}")
+            except Exception as e:
+                results.append(f"⚠️ {server_id} - {get_text(user_id, 'common', 'error')}: {str(e)[:50]}")
+        
+        text = f"📊 *{get_text(user_id, 'status', 'all_servers_status')}:*\n\n"
+        text += "\n".join(results)
+        text += f"\n\n📈 *{get_text(user_id, 'status', 'total_servers')}:* {len(all_servers)}"
+        
+        await send_or_edit_message(update, text)
+        
+    except Exception as e:
+        error_text = f"❌ {get_text(user_id, 'common', 'error')} {get_text(user_id, 'status', 'checking_all_servers')}: {str(e)}"
+        logger.error(f"Ошибка в check_all_command: {e}")
+        await send_or_edit_message(update, error_text)
+
+async def disk_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Обработчик команды /disk"""
+    user_id = get_user_id(update)
+    
+    try:
+        from checks.servers import get_server_checker
+        
+        checker = get_server_checker()
+        local_status = checker.check_local_server()
+        disk_info = local_status.get('disk', {})
+        
+        text = f"💾 *{get_text(user_id, 'disk', 'title')} (SERV301):*\n\n"
+        text += f"📁 *{get_text(user_id, 'disk', 'filesystem')}:* {disk_info.get('filesystem', 'N/A')}\n"
+        text += f"📊 *{get_text(user_id, 'disk', 'used_percent')}:* {disk_info.get('percent', 0)}%\n"
+        text += f"📈 *{get_text(user_id, 'disk', 'total')}:* {disk_info.get('total_gb', 0):.1f} GB\n"
+        text += f"📉 *{get_text(user_id, 'disk', 'used')}:* {disk_info.get('used_gb', 0):.1f} GB\n"
+        text += f"💚 *{get_text(user_id, 'disk', 'free')}:* {disk_info.get('free_gb', 0):.1f} GB"
+        
+        await update.message.reply_text(text, parse_mode="Markdown")
+        
+    except Exception as e:
+        error_text = f"❌ {get_text(user_id, 'common', 'error')} {get_text(user_id, 'disk', 'getting_info')}: {str(e)}"
+        logger.error(f"Ошибка в disk_command: {e}")
+        await update.message.reply_text(error_text)
+
+async def docker_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Обработчик команды /docker"""
+    user_id = get_user_id(update)
+    
+    keyboard = [
+        [InlineKeyboardButton(f"🐳 {get_text(user_id, 'docker', 'status_all')}", callback_data="docker_status")],
+        [
+            InlineKeyboardButton(f"📊 {get_text(user_id, 'docker', 'serv301_containers')}", callback_data="docker_serv301"),
+            InlineKeyboardButton(f"📊 {get_text(user_id, 'docker', 'serv300_containers')}", callback_data="docker_serv300")
+        ],
+        [InlineKeyboardButton(get_text(user_id, "common", "back"), callback_data="back_to_menu")]
+    ]
+    
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await send_or_edit_message(
+        update,
+        f"🐳 *{get_text(user_id, 'docker', 'docker_menu')}:*\n{get_text(user_id, 'docker', 'select_action')}",
+        reply_markup=reply_markup
+    )
+
+async def site_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Обработчик команды /site"""
+    user_id = get_user_id(update)
+    await send_or_edit_message(
+        update,
+        f"🌐 {get_text(user_id, 'menu', 'sites')}...\n"
+        f"{get_text(user_id, 'common', 'not_implemented')}"
+    )
+
+async def version_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Обработчик команды /version"""
+    user_id = get_user_id(update)
+    version_info = get_text(user_id, 'version', 'info').format(
+        version="1.0.0",
+        python_version=sys.version.split()[0],
+        author="Ruslan Semis"
+    )
+    await update.message.reply_text(version_info, parse_mode="Markdown")
+
+
+
+async def docker_status_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Обработчик команды /docker_status"""
+    user_id = get_user_id(update)
+    
+    try:
+        from checks.docker import check_all_docker_servers
+        
+        await send_or_edit_message(update, f"{get_text(user_id, 'docker', 'checking')} ⏳")
+        
+        results = check_all_docker_servers()
+        
+        text = f"🐳 *{get_text(user_id, 'docker', 'status_all')}:*\n\n"
+        
+        for server_id, result in results.items():
+            if result.get("status") == "success":
+                total = result.get("total_containers", 0)
+                running = result.get("running_containers", 0)
+                critical_failed = result.get("critical_failed", 0)
+                
+                if critical_failed > 0:
+                    text += f"🔴 *{server_id}:* {running}/{total} {get_text(user_id, 'docker', 'running')} ({critical_failed} {get_text(user_id, 'docker', 'critical_failed')})\n"
+                elif running == total:
+                    text += f"✅ *{server_id}:* {running}/{total} {get_text(user_id, 'docker', 'running')}\n"
+                else:
+                    text += f"🟡 *{server_id}:* {running}/{total} {get_text(user_id, 'docker', 'running')}\n"
+            else:
+                text += f"🔴 *{server_id}:* {get_text(user_id, 'common', 'error')} - {result.get('error', 'Unknown')}\n"
+        
+        text += f"\n📊 *{get_text(user_id, 'docker', 'total_servers')}:* {len(results)}"
+        
+        await send_or_edit_message(update, text)
+        
+    except Exception as e:
+        error_text = f"❌ {get_text(user_id, 'common', 'error')} {get_text(user_id, 'docker', 'checking_status')}: {str(e)}"
+        logger.error(f"Ошибка в docker_status_command: {e}")
+        await send_or_edit_message(update, error_text)
+
+async def pve_status_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Обработчик команды /pve_status"""
+    user_id = get_user_id(update)
+    
+    try:
+        from checks.proxmox import get_proxmox_client
+        
+        await send_or_edit_message(update, f"{get_text(user_id, 'pve', 'checking')} ⏳")
+        
+        pve_servers = get_pve_servers()
+        text = f"🏗 *{get_text(user_id, 'pve', 'status')}:*\n\n"
+        
+        for server_id in pve_servers:
+            try:
+                client = get_proxmox_client(server_id)
+                if client and client.check_connection():
+                    # Здесь можно добавить получение информации о виртуальных машинах
+                    text += f"✅ *{server_id}:* {get_text(user_id, 'pve', 'online')}\n"
+                else:
+                    text += f"🔴 *{server_id}:* {get_text(user_id, 'pve', 'offline')}\n"
+            except Exception as e:
+                text += f"🔴 *{server_id}:* {get_text(user_id, 'common', 'error')} - {str(e)[:50]}\n"
+        
+        if not pve_servers:
+            text = f"ℹ️ *{get_text(user_id, 'pve', 'no_servers')}*"
+        
+        await send_or_edit_message(update, text)
+        
+    except Exception as e:
+        error_text = f"❌ {get_text(user_id, 'common', 'error')} {get_text(user_id, 'pve', 'checking_status')}: {str(e)}"
+        logger.error(f"Ошибка в pve_status_command: {e}")
+        await send_or_edit_message(update, error_text)
+
+async def pbs_status_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Обработчик команды /pbs_status"""
+    user_id = get_user_id(update)
+
+    try:
+        from checks.proxmox import get_proxmox_backup_client
+
+        await send_or_edit_message(update, f"{get_text(user_id, 'pbs', 'checking')} ⏳")
+
+        pbs_servers = get_pbs_servers()
+        text = f"💾 *{get_text(user_id, 'pbs', 'status')}:*\n\n"
+
+        for server_id in pbs_servers:
+            try:
+                client = get_proxmox_backup_client(server_id)
+                if client and client.check_connection():
+                    # Здесь можно добавить проверку бэкапов
+                    text += f"✅ *{server_id}:* {get_text(user_id, 'pbs', 'online')}\n"
+                else:
+                    text += f"🔴 *{server_id}:* {get_text(user_id, 'pbs', 'offline')}\n"
+            except Exception as e:
+                text += f"🔴 *{server_id}:* {get_text(user_id, 'common', 'error')} - {str(e)[:50]}\n"
+
+        if not pbs_servers:
+            text = f"ℹ️ *{get_text(user_id, 'pbs', 'no_servers')}*"
+
+        await send_or_edit_message(update, text)
+
+    except Exception as e:
+        error_text = f"❌ {get_text(user_id, 'common', 'error')} {get_text(user_id, 'pbs', 'checking_status')}: {str(e)}"
+        logger.error(f"Ошибка в pbs_status_command: {e}")
+        await send_or_edit_message(update, error_text)
+
+async def restart301_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Обработчик команды /restart301 - перезапуск Docker на SERV301"""
+    user_id = get_user_id(update)
+    
+    try:
+        from checks.docker import get_docker_monitor
+        
+        await send_or_edit_message(update, f"🔄 {get_text(user_id, 'docker', 'restarting_serv301')}...")
+        
+        monitor = get_docker_monitor('serv301')
+        result = monitor.restart_all_containers()
+        
+        if result.get('success'):
+            text = f"✅ {get_text(user_id, 'docker', 'restart_success_301')}\n"
+            text += f"📊 {result.get('message', '')}"
+            
+            if result.get('output'):
+                text += f"\n\n📝 {get_text(user_id, 'common', 'output')}:"
+                text += f"\n```\n{result.get('output', '')[:200]}...\n```"
+        else:
+            text = f"❌ {get_text(user_id, 'docker', 'restart_failed_301')}\n"
+            text += f"📛 {result.get('error', 'Неизвестная ошибка')}"
+        
+        await send_or_edit_message(update, text)
+        
+    except Exception as e:
+        error_text = f"❌ {get_text(user_id, 'common', 'error')} {get_text(user_id, 'docker', 'restarting_serv301')}: {str(e)}"
+        logger.error(f"Ошибка в restart301_command: {e}")
+        await send_or_edit_message(update, error_text)
+
+async def restart300_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Обработчик команды /restart300 - перезапуск Docker на SERV300"""
+    user_id = get_user_id(update)
+    
+    try:
+        from checks.docker import get_docker_monitor
+        
+        await send_or_edit_message(update, f"🔄 {get_text(user_id, 'docker', 'restarting_serv300')}...")
+        
+        monitor = get_docker_monitor('serv300')
+        result = monitor.restart_all_containers()
+        
+        if result.get('success'):
+            text = f"✅ {get_text(user_id, 'docker', 'restart_success_300')}\n"
+            text += f"📊 {result.get('message', '')}"
+            
+            if result.get('output'):
+                text += f"\n\n📝 {get_text(user_id, 'common', 'output')}:"
+                text += f"\n```\n{result.get('output', '')[:200]}...\n```"
+        else:
+            text = f"❌ {get_text(user_id, 'docker', 'restart_failed_300')}\n"
+            text += f"📛 {result.get('error', 'Неизвестная ошибка')}"
+        
+        await send_or_edit_message(update, text)
+        
+    except Exception as e:
+        error_text = f"❌ {get_text(user_id, 'common', 'error')} {get_text(user_id, 'docker', 'restarting_serv300')}: {str(e)}"
+        logger.error(f"Ошибка в restart300_command: {e}")
+        await send_or_edit_message(update, error_text)
+ ⏳")
+        
+        pbs_servers = get_pbs_servers()
+        text = f"💾 *{get_text(user_id, 'pbs', 'status')}:*\n\n"
+        
+        for server_id in pbs_servers:
+            try:
+                client = get_proxmox_backup_client(server_id)
+                if client and client.check_connection():
+                    # Здесь можно добавить проверку бэкапов
+                    text += f"✅ *{server_id}:* {get_text(user_id, 'pbs', 'online')}\n"
+                else:
+                    text += f"🔴 *{server_id}:* {get_text(user_id, 'pbs', 'offline')}\n"
+            except Exception as e:
+                text += f"🔴 *{server_id}:* {get_text(user_id, 'common', 'error')} - {str(e)[:50]}\n"
+        
+        if not pbs_servers:
+            text = f"ℹ️ *{get_text(user_id, 'pbs', 'no_servers')}*"
+        
+        await send_or_edit_message(update, text)
+        
+    except Exception as e:
+        error_text = f"❌ {get_text(user_id, 'common', 'error')} {get_text(user_id, 'pbs', 'checking_status')}: {str(e)}"
+        logger.error(f"Ошибка в pbs_status_command: {e}")
+        await send_or_edit_message(update, error_text)
+
+
+async def logs_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Обработчик команды /logs (только для админа)"""
+    user_id = get_user_id(update)
+    
+    # Проверка прав (можно добавить проверку списка админов)
+    if user_id != 70107570:  # Только для администратора
+        await update.message.reply_text(f"❌ {get_text(user_id, 'common', 'access_denied')}.")
+        return
+    
+    try:
+        import subprocess
+        # Получаем последние 10 строк логов
+        result = subprocess.run(
+            ['tail', '-n', '20', 'logs/bot.log'],
+            capture_output=True,
+            text=True
+        )
+        
+        logs = result.stdout if result.stdout else result.stderr
+        if len(logs) > 4000:  # Ограничение Telegram
+            logs = logs[-4000:]
+        
+        await update.message.reply_text(f"📋 *{get_text(user_id, 'logs', 'title')}:*\n```\n{logs}\n```", parse_mode="Markdown")
+        
+    except Exception as e:
+        await update.message.reply_text(f"❌ {get_text(user_id, 'common', 'error')} {get_text(user_id, 'logs', 'reading')}: {str(e)}")
+
+# ==================== CALLBACK ОБРАБОТЧИКИ ====================
+
+async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработчик нажатий на inline кнопки"""
+    query = update.callback_query
+    await query.answer()
+    
+    user_id = get_user_id(update)
+    callback_data = query.data
+    
+    logger.info(f"Обработан callback: {callback_data} для пользователя {user_id}")
+    
+    if callback_data == "menu":
+        await menu_command(update, context)
+        
+    elif callback_data == "status":
+        await status_command(update, context)
+        
+    elif callback_data == "check_serv301":
+        await status301_command(update, context)
+        
+    elif callback_data == "check_serv300":
+        await status300_command(update, context)
+        
+    elif callback_data == "check_all":
+        await check_all_command(update, context)
+        
+    elif callback_data == "docker":
+        await docker_command(update, context)
+        
+    elif callback_data == "docker_status":
+        await docker_status_command(update, context)
+        
+    elif callback_data == "docker_serv301":
+        await check_server_docker(update, context, "serv301")
+        
+    elif callback_data == "docker_serv300":
+        await check_server_docker(update, context, "serv300")
+        
+    elif callback_data == "sites":
+        await site_command(update, context)
+        
+    elif callback_data == "pve_status":
+        # Получаем user_id из запроса
+        user_id = query.from_user.id
+        
+        # Создаем правильный update объект
+        class SimpleUpdate:
+            def __init__(self, user_id, query):
+                class EffectiveUser:
+                    id = user_id
+                self.effective_user = EffectiveUser()
+                self.callback_query = query
+        
+        simple_update = SimpleUpdate(user_id, query)
+        await pve_status_command(simple_update, context)
+
+    elif callback_data == "pbs_status":
+        # Получаем user_id из запроса
+        user_id = query.from_user.id
+        
+        # Создаем правильный update объект
+        class SimpleUpdate:
+            def __init__(self, user_id, query):
+                class EffectiveUser:
+                    id = user_id
+                self.effective_user = EffectiveUser()
+                self.callback_query = query
+        
+        simple_update = SimpleUpdate(user_id, query)
+        await pbs_status_command(simple_update, context)
+
+    elif callback_data == "help":
+        await help_command(update, context)
+        
+    elif callback_data == "language":
+        # Показываем выбор языка
+        keyboard = [
+            [
+                InlineKeyboardButton(get_language_name("ru"), callback_data="lang_ru"),
+                InlineKeyboardButton(get_language_name("uk"), callback_data="lang_uk"),
+                InlineKeyboardButton(get_language_name("en"), callback_data="lang_en")
+            ],
+            [
+                InlineKeyboardButton(get_text(user_id, "common", "back"), callback_data="back_to_menu")
+            ]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await safe_edit_message_text(
+            query,
+            get_text(user_id, "language", "select"),
+            reply_markup=reply_markup
+        )
+        
+    elif callback_data.startswith("lang_"):
+        # Установка языка
+        lang = callback_data.replace("lang_", "")
+        success = language_manager.set_user_language(user_id, lang)
+        
+        if success:
+            await safe_edit_message_text(
+                query,
+                get_text(user_id, "language", "changed").format(language=get_language_name(lang))
+            )
+        else:
+            await safe_edit_message_text(
+                query,
+                f"❌ {get_text(user_id, 'common', 'error')} {get_text(user_id, 'language', 'changing')}"
+            )
+        
+    elif callback_data == "back_to_menu":
+        await menu_command(update, context)
+        
+    else:
+        await safe_edit_message_text(
+            query,
+            f"❌ {get_text(user_id, 'common', 'unknown_command')}: {callback_data}"
+        )
+
+# ==================== РЕГИСТРАЦИЯ ОБРАБОТЧИКОВ ====================
+
+def register_handlers(application):
+    """Регистрация всех обработчиков команд"""
+    
+    # Команды
+    application.add_handler(CommandHandler("start", start_command))
+    application.add_handler(CommandHandler("help", help_command))
+    application.add_handler(CommandHandler("menu", menu_command))
+    application.add_handler(CommandHandler("status", status_command))
+    application.add_handler(CommandHandler("status301", status301_command))
+    application.add_handler(CommandHandler("status300", status300_command))
+    application.add_handler(CommandHandler("disk", disk_command))
+    application.add_handler(CommandHandler("docker", docker_command))
+    application.add_handler(CommandHandler("site", site_command))
+    application.add_handler(CommandHandler("version", version_command))
+    application.add_handler(CommandHandler("logs", logs_command))
+    application.add_handler(CommandHandler("docker_status", docker_status_command))
+    application.add_handler(CommandHandler("pve_status", pve_status_command))
+    application.add_handler(CommandHandler("pbs_status", pbs_status_command))
+    application.add_handler(CommandHandler("restart301", restart301_command))
+    application.add_handler(CommandHandler("restart300", restart300_command))
+    
+    # Callback обработчики
+    application.add_handler(CallbackQueryHandler(callback_handler))
+    
+    logger.info("Обработчики команд зарегистрированы")

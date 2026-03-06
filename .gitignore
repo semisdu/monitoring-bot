@@ -1,0 +1,18 @@
+config.yml
+config/config.yml
+*.db
+logs/
+# Config files
+config/settings.py
+config/settings.py.backup*
+.env
+.env.*
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Backups
+*.backup
+*.bak
+*~

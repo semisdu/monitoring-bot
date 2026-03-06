@@ -1,0 +1,147 @@
+"""
+Модуль проверки доступности сайтов
+"""
+import requests
+import time
+import logging
+from typing import Dict, Any
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
+logger = logging.getLogger(__name__)
+
+class SiteChecker:
+    """Класс для проверки доступности сайтов"""
+    
+    def __init__(self):
+        self.session = requests.Session()
+        self.timeout = 10
+    
+    def check_all_sites(self) -> Dict[str, Dict]:
+        """Проверить все сайты из конфигурации"""
+        try:
+            from config.settings import config
+            
+            results = {}
+            
+            # Используем ThreadPoolExecutor для параллельной проверки
+            with ThreadPoolExecutor(max_workers=5) as executor:
+                future_to_site = {}
+                
+                for site in config.SITES:
+                    site_id = site.get('id', 'unknown')
+                    url = site.get('url', '')
+                    server = site.get('server_id', 'unknown')
+                    
+                    future = executor.submit(
+                        self._check_single_site,
+                        site_id,
+                        url,
+                        server,
+                        site.get("name")  # Добавляем человекочитаемое имя
+                    )
+                    future_to_site[future] = site_id
+                
+                # Собираем результаты
+                for future in as_completed(future_to_site):
+                    site_id = future_to_site[future]
+                    try:
+                        result = future.result()
+                        results[site_id] = result
+                    except Exception as e:
+                        logger.error(f"Ошибка при проверке сайта {site_id}: {e}")
+                        results[site_id] = {
+                            'id': site_id,
+                            'success': False,
+                            'status_code': 0,
+                            'response_time_ms': 0,
+                            'error': str(e),
+                            'server': 'unknown'
+                        }
+            
+            return results
+            
+        except Exception as e:
+            logger.error(f"Ошибка в check_all_sites: {e}")
+            return {}
+    
+    def _check_single_site(self, site_id: str, url: str, server: str, name: str = None) -> Dict[str, Any]:
+        """Проверить один сайт"""
+        try:
+            start_time = time.time()
+            
+            # Добавляем протокол если нет
+            if not url.startswith(('http://', 'https://')):
+                url = 'http://' + url
+            
+            # Отключаем предупреждения о SSL
+            import urllib3
+            urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+            
+            response = self.session.get(
+                url, 
+                timeout=self.timeout, 
+                verify=False,
+                headers={'User-Agent': 'MonitoringBot/1.0'},
+                allow_redirects=True
+            )
+            
+            response_time_ms = int((time.time() - start_time) * 1000)
+            success = response.status_code < 400  # 2xx и 3xx коды - успех
+            
+            return {
+                'id': site_id,
+                'name': name if name else site_id,
+                'url': url,
+                'success': success,
+                'status_code': response.status_code,
+                'response_time_ms': response_time_ms,
+                'server': server,
+                'timestamp': time.time()
+            }
+            
+        except requests.exceptions.SSLError:
+            # Пробуем HTTP вместо HTTPS
+            try:
+                if url.startswith('https://'):
+                    http_url = url.replace('https://', 'http://')
+                    start_time = time.time()
+                    response = self.session.get(http_url, timeout=self.timeout)
+                    response_time_ms = int((time.time() - start_time) * 1000)
+                    
+                    return {
+                        'id': site_id,
+                        'name': name if name else site_id,
+                        'url': http_url,
+                        'success': response.status_code < 400,
+                        'status_code': response.status_code,
+                        'response_time_ms': response_time_ms,
+                        'server': server,
+                        'timestamp': time.time(),
+                        'note': 'SSL error, used HTTP'
+                    }
+            except Exception as e:
+                logger.error(f"SSL error for {site_id}: {e}")
+        
+        except Exception as e:
+            logger.error(f"Ошибка при проверке {site_id}: {e}")
+        
+        # В случае любой ошибки
+        return {
+            'id': site_id,
+            'name': name if name else site_id,
+            'url': url,
+            'success': False,
+            'status_code': 0,
+            'response_time_ms': 0,
+            'server': server,
+            'timestamp': time.time(),
+            'error': 'Connection failed'
+        }
+    
+    def check_site(self, site_config: Dict) -> Dict[str, Any]:
+        """Проверить сайт по конфигурации (для обратной совместимости)"""
+        site_id = site_config.get('id', 'unknown')
+        url = site_config.get('url', '')
+        server = site_config.get('server_id', 'unknown')
+        
+        return self._check_single_site(site_id, url, server, site_config.get("name"))

@@ -1,0 +1,528 @@
+#!/usr/bin/env python3
+"""
+Мультиязычные тексты для Monitoring Bot
+Поддержка: русский, украинский, английский
+"""
+
+TEXTS = {
+    "ru": {
+        "start": {
+            "welcome": "👋 Привет, {name}!",
+            "description": "🤖 Я - Monitoring Bot, система мониторинга инфраструктуры.",
+            "features": "📊 Доступные функции:\n• Проверка статуса серверов\n• Мониторинг Docker контейнеров\n• Проверка доступности сайтов\n• Анализ логов в реальном времени\n• Управление инфраструктурой",
+            "help_hint": "📋 Используй /help для списка команд\n🔍 Или выбери действие из меню ниже:"
+        },
+        "help": {
+            "title": "📋 **ПОЛНЫЙ СПИСОК КОМАНД**",
+            "basic": "🏁 **Основные команды:**",
+            "status": "🔍 **Проверка серверов:**",
+            "sites": "🌐 **Проверка сайтов:**",
+            "docker": "🐳 **Управление Docker:**",
+            "monitoring": "📊 **Мониторинг и логи:**",
+            "logs": "🚨 **Мониторинг логов:**",
+            "info": "ℹ **Информация:**",
+            "infra": "🏗 **Инфраструктура (если настроено):**"
+        },
+        "status": {
+            "checking": "🔍 Проверяю статус...",
+            "checking_301": "🔍 Проверяю статус SERV301...",
+            "checking_300": "🔍 Проверяю статус SERV300...",
+            "checking_all": "🔍 Проверяю все серверы...",
+            "in_development": "Эта команда находится в разработке.",
+            "title": "📊 Статус серверов",
+            "app_servers": "🚀 Серверы приложений",
+            "virtual_machines": "💻 Виртуальные машины",
+            "select_server_type": "Выберите тип серверов для проверки:"
+        },
+        "docker": {
+            "checking": "Проверяю Docker...",
+            "checking_status": "проверка статуса Docker",
+            "status": "Статус Docker",
+            "running": "Запущено",
+            "check_serv300": "Проверить SERV300",
+            "check_serv301": "Проверить SERV301",
+            "restart_serv300": "Перезапустить SERV300",
+            "restart_serv301": "Перезапустить SERV301",
+            "error": "ошибка",
+            "restarting_serv301": "🔄 Перезапускаю Docker на SERV301...",
+            "restarting_serv300": "🔄 Перезапускаю Docker на SERV300...",
+            "restarting_all": "🔄 Перезапускаю Docker на всех серверах...",
+            "restart_title_serv301": "🔄 *Перезапуск Docker SERV301:*",
+            "restart_title_serv300": "🔄 *Перезапуск Docker SERV300:*",
+            "restart_title_all": "🔄 *Перезапуск Docker - все серверы:*",
+            "no_containers": "❌ Нет контейнеров в конфигурации",
+            "restart_success": "✅ Все контейнеры успешно перезапущены",
+            "restart_error": "❌ Ошибка",
+            "output": "📋 Вывод:",
+            "exception": "❌ Исключение",
+            "server": "Сервер",
+            "success": "Успешно",
+            "all_containers_restarted": "✅ Все контейнеры на всех серверах успешно перезапущены"
+        },
+        "pve": {
+            "checking": "Проверяю Proxmox VE...",
+            "checking_status": "проверка статуса Proxmox VE",
+            "status": "Статус Proxmox VE",
+            "online": "доступен",
+            "offline": "недоступен",
+            "no_servers": "Серверы Proxmox VE не настроены"
+        },
+        "pbs": {
+            "checking": "Проверяю Proxmox Backup Server...",
+            "checking_status": "проверка статуса Proxmox Backup Server",
+            "status": "Статус Proxmox Backup Server",
+            "online": "доступен",
+            "offline": "недоступен",
+            "no_servers": "Серверы Proxmox Backup Server не настроены"
+        },
+        "menu": {
+            "help_text": "🤖 **Monitoring Bot** - система мониторинга инфраструктуры\n\n🏁 **ОСНОВНЫЕ КОМАНДЫ:**\n• /start - Главное меню\n• /help - Эта справка\n• /status - Проверка статуса всех серверов\n\n📊 **МОНИТОРИНГ СЕРВЕРОВ:**\n• /status301 - Статус SERV301\n• /status300 - Статус SERV300  \n• /sites - Проверка всех сайтов\n\n🐳 **УПРАВЛЕНИЕ DOCKER:**\n• Проверка статуса Docker через меню Docker\n• Перезапуск контейнеров через меню Docker\n\n🚨 **МОНИТОРИНГ И АЛЕРТЫ:**\n• /alerts - Активные алерты\n• /stats - Статистика системы\n• /logs - Информация о логах\n• /monitor_status - Статус мониторинга\n• /monitor_log - Лог мониторинга\n• /cleanup - Очистка старых данных\n\n🏗 **ИНФРАСТРУКТУРА:**\n• /pve_status - Статус Proxmox VE\n• /pbs_status - Статус Proxmox Backup Server\n\n🌍 **НАСТРОЙКИ:**\n• Смена языка через меню\n\n⚡ **АВТОМАТИЧЕСКИЙ МОНИТОРИНГ:**\n• Проверка сайтов каждые 5 минут\n• Контроль Docker контейнеров\n• Отслеживание состояния серверов\n• Логирование всех событий\n\n📱 **БЫСТРЫЙ ДОСТУП ИЗ МЕНЮ:**\nИспользуйте кнопки в главном меню для быстрого доступа к основным функциям.",
+            "status": "📊 Статус серверов",
+            "docker": "🐳 Docker",
+            "sites": "🌐 Сайты",
+            "help": "📋 Помощь",
+            "pve": "🏗 PVE",
+            "pbs": "💾 PBS"
+        },
+        "sites": {
+            "title": "🌐 Проверка сайтов",
+            "site1": "https://er.edu-post-diploma.kharkov.ua/",
+            "site2": "https://prof.edu-post-diploma.kharkov.ua/",
+            "site3": "https://site3.example.com/ (тестовый)",
+            "site4": "https://site4.example.com/ (тестовый)"
+        },
+        "language": "🌍 Язык",
+        "language": {
+            "select": "🌍 Выберите язык / Оберіть мову / Select language:",
+            "changed": "✅ Язык изменен на: {language}",
+            "current": "Текущий язык: {language}"
+        },
+        "common": {
+            "back": "Назад",
+            "error": "❌ Ошибка",
+            "success": "✅ Успешно",
+            "loading": "⏳ Загрузка...",
+            "not_implemented": "⏳ Эта функция в разработке",
+            "check_all": "Проверить все",
+            "restart_all": "Перезапустить все",
+            "unknown_error": "Неизвестная ошибка"
+        },
+        "monitoring": {
+            "alerts": "🚨 Алерты",
+            "stats": "📊 Статистика",
+            "logs": "📋 Логи",
+            "cleanup": "🧹 Очистка",
+            "monitor_status": "📈 Статус мониторинга",
+            "monitor_log": "📝 Лог мониторинга"
+        },
+        "monitor": {
+            "checking": "Проверка мониторинга...",
+            "status_title": "📈 Статус мониторинга",
+            "description": "Система автоматического мониторинга инфраструктуры.",
+            "what_monitored": "📊 Что мониторится:",
+            "sites": "🌐 Сайты",
+            "every_5_min": "каждые 5 минут",
+            "system_metrics": "📊 Системные метрики",
+            "docker": "🐳 Docker контейнеры",
+            "current_status": "📈 Текущий статус:",
+            "database_works": "База данных работает",
+            "modules_ready": "Модули готовы",
+            "scheduler_will_be_added": "Планировщик будет добавлен",
+            "use_commands": "🚀 Используйте команды:",
+            "full_check": "Полная проверка",
+            "check_sites": "Проверить сайты",
+            "check_servers": "Проверить серверы"
+        },
+        "alerts": {
+            "title": "🚨 Активные алерты",
+            "no_alerts": "🎉 Нет активных алертов!",
+            "alert_item": "{icon} *{title}*\n   ⏰ {time}",
+            "critical": "критический",
+            "warning": "предупреждение",
+            "info": "информация",
+            "message": "Сообщение"
+        },
+        "stats": {
+            "title": "📊 Статистика системы",
+            "site_status": "🌐 Статус сайтов:",
+            "summary": "✅ Итог:",
+            "availability": "📈 Доступность:",
+            "time": "⏰ Время:",
+            "no_data": "нет данных",
+            "sites_working": "сайтов работают",
+            "commands_stats": "📊 Статистика команд:",
+            "total_commands": "Всего команд:",
+            "top_users": "👥 Топ пользователей:",
+            "top_commands": "🔥 Популярные команды:",
+            "for_last_days": "за последние"
+        },
+        "logs": {
+            "title": "📋 Логи системы",
+            "description": "Информация о логах системы мониторинга.",
+            "paths_title": "📁 Пути:",
+            "database": "База данных",
+            "files": "Файлы логов",
+            "view_alerts": "🚨 Просмотр алертов:",
+            "unresolved_alerts": "Нерешенные алерты",
+            "cleanup_title": "🧹 Очистка:",
+            "cleanup_description": "Очистка старых данных"
+        },
+        "cleanup": {
+            "title": "🧹 Очистка данных",
+            "description": "Очистка старых данных мониторинга.",
+            "result": "✅ Очистка завершена:\n• Удалено проверок сайтов: {site_checks}\n• Удалено проверок системы: {system_checks}\n• Помечено алертов как решенные: {alerts_resolved}",
+            "confirm": "Вы уверены что хотите очистить старые данные?",
+            "cancelled": "❌ Очистка отменена."
+        }
+    },
+    "uk": {
+        "start": {
+            "welcome": "👋 Вітаю, {name}!",
+            "description": "🤖 Я - Monitoring Bot, система моніторингу інфраструктури.",
+            "features": "📊 Доступні функції:\n• Перевірка статусу серверів\n• Моніторинг Docker контейнерів\n• Перевірка доступності сайтів\n• Аналіз логів у реальному часі\n• Управління інфраструктурою",
+            "help_hint": "📋 Використовуй /help для списку команд\n🔍 Або оберіть дію з меню нижче:"
+        },
+        "help": {
+            "title": "📋 **ПОВНИЙ СПИСОК КОМАНД**",
+            "basic": "🏁 **Основні команди:**",
+            "status": "🔍 **Перевірка серверів:**",
+            "sites": "🌐 **Перевірка сайтів:**",
+            "docker": "🐳 **Управління Docker:**",
+            "monitoring": "📊 **Моніторинг і логи:**",
+            "logs": "🚨 **Моніторинг логів:**",
+            "info": "ℹ **Інформація:**",
+            "infra": "🏗 **Інфраструктура (якщо налаштовано):**"
+        },
+        "status": {
+            "checking": "🔍 Перевіряю статус...",
+            "checking_301": "🔍 Перевіряю статус SERV301...",
+            "checking_300": "🔍 Перевіряю статус SERV300...",
+            "checking_all": "🔍 Перевіряю всі сервери...",
+            "in_development": "Ця команда знаходиться в розробці.",
+            "title": "📊 Статус серверів",
+            "app_servers": "🚀 Сервери додатків",
+            "virtual_machines": "💻 Віртуальні машини",
+            "select_server_type": "Оберіть тип серверів для перевірки:"
+        },
+        "docker": {
+            "checking": "Перевіряю Docker...",
+            "checking_status": "перевірка статусу Docker",
+            "status": "Статус Docker",
+            "running": "Запущено",
+            "check_serv300": "Перевірити SERV300",
+            "check_serv301": "Перевірити SERV301",
+            "restart_serv300": "Перезапустити SERV300",
+            "restart_serv301": "Перезапустити SERV301",
+            "error": "помилка",
+            "restarting_serv301": "🔄 Перезапускаю Docker на SERV301...",
+            "restarting_serv300": "🔄 Перезапускаю Docker на SERV300...",
+            "restarting_all": "🔄 Перезапускаю Docker на всіх серверах...",
+            "restart_title_serv301": "🔄 *Перезапуск Docker SERV301:*",
+            "restart_title_serv300": "🔄 *Перезапуск Docker SERV300:*",
+            "restart_title_all": "🔄 *Перезапуск Docker - всі сервери:*",
+            "no_containers": "❌ Немає контейнерів в конфігурації",
+            "restart_success": "✅ Всі контейнери успішно перезапущено",
+            "restart_error": "❌ Помилка",
+            "output": "📋 Виведення:",
+            "exception": "❌ Виняток",
+            "server": "Сервер",
+            "success": "Успішно",
+            "all_containers_restarted": "✅ Всі контейнери на всіх серверах успішно перезапущено"
+        },
+        "pve": {
+            "checking": "Перевіряю Proxmox VE...",
+            "checking_status": "перевірка статусу Proxmox VE",
+            "status": "Статус Proxmox VE",
+            "online": "доступен",
+            "offline": "недоступен",
+            "no_servers": "Сервери Proxmox VE не налаштовано"
+        },
+        "pbs": {
+            "checking": "Перевіряю Proxmox Backup Server...",
+            "checking_status": "перевірка статусу Proxmox Backup Server",
+            "status": "Статус Proxmox Backup Server",
+            "online": "доступен",
+            "offline": "недоступен",
+            "no_servers": "Сервери Proxmox Backup Server не налаштовано"
+        },
+        "menu": {
+            "help_text": "🤖 **Monitoring Bot** - система моніторингу інфраструктури\n\n🏁 **ОСНОВНІ КОМАНДИ:**\n• /start - Головне меню\n• /help - Ця довідка  \n• /status - Перевірка статусу всіх серверів\n\n📊 **МОНІТОРИНГ СЕРВЕРІВ:**\n• /status301 - Статус SERV301\n• /status300 - Статус SERV300\n• /sites - Перевірка всіх сайтів\n\n🐳 **УПРАВЛІННЯ DOCKER:**\n• Перевірка статусу Docker через меню Docker\n• Перезапуск контейнерів через меню Docker\n\n🚨 **МОНІТОРИНГ ТА АЛЕРТИ:**\n• /alerts - Активні алерти\n• /stats - Статистика системи\n• /logs - Інформація про логи\n• /monitor_status - Статус моніторингу\n• /monitor_log - Лог моніторингу\n• /cleanup - Очистка старих даних\n\n🏗 **ІНФРАСТРУКТУРА:**\n• /pve_status - Статус Proxmox VE\n• /pbs_status - Статус Proxmox Backup Server\n\n🌍 **НАЛАШТУВАННЯ:**\n• Зміна мови через меню\n\n⚡ **АВТОМАТИЧНИЙ МОНІТОРИНГ:**\n• Перевірка сайтів кожні 5 хвилин\n• Контроль Docker контейнерів\n• Відстеження стану серверів\n• Логування всіх подій\n\n📱 **ШВИДКИЙ ДОСТУП З МЕНЮ:**\nВикористовуйте кнопки в головному меню для швидкого доступу до основних функцій.",
+            "docker": "🐳 Docker",
+            "sites": "🌐 Сайти",
+            "help": "📋 Допомога",
+            "pve": "🏗 PVE",
+            "pbs": "💾 PBS"
+        },
+        "sites": {
+            "title": "🌐 Перевірка сайтів",
+            "site1": "https://er.edu-post-diploma.kharkov.ua/",
+            "site2": "https://prof.edu-post-diploma.kharkov.ua/",
+            "site3": "https://site3.example.com/ (тестовый)",
+            "site4": "https://site4.example.com/ (тестовый)"
+        },
+        "language": "🌍 Язык",
+        "language": "🌍 Мова",
+        "language": {
+            "select": "🌍 Виберіть мову / Выберите язык / Select language:",
+            "changed": "✅ Мову змінено на: {language}",
+            "current": "Поточна мова: {language}"
+        },
+        "common": {
+            "back": "Назад",
+            "error": "❌ Помилка",
+            "success": "✅ Успішно",
+            "loading": "⏳ Завантаження...",
+            "not_implemented": "⏳ Ця функція в розробці",
+            "check_all": "Перевірити всі",
+            "restart_all": "Перезапустити всі",
+            "unknown_error": "Невідома помилка"
+        },
+        "monitoring": {
+            "alerts": "🚨 Алерти",
+            "stats": "📊 Статистика",
+            "logs": "📋 Логи",
+            "cleanup": "🧹 Очистка",
+            "monitor_status": "📈 Статус моніторингу",
+            "monitor_log": "📝 Лог моніторингу"
+        },
+        "monitor": {
+            "checking": "Перевірка моніторингу...",
+            "status_title": "📈 Статус моніторингу",
+            "description": "Система автоматичного моніторингу інфраструктури.",
+            "what_monitored": "📊 Що моніториться:",
+            "sites": "🌐 Сайти",
+            "every_5_min": "кожні 5 хвилин",
+            "system_metrics": "📊 Системні метрики",
+            "docker": "🐳 Docker контейнери",
+            "current_status": "📈 Поточний статус:",
+            "database_works": "База даних працює",
+            "modules_ready": "Модулі готові",
+            "scheduler_will_be_added": "Планувальник буде доданий",
+            "use_commands": "🚀 Використовуйте команди:",
+            "full_check": "Повна перевірка",
+            "check_sites": "Перевірити сайти",
+            "check_servers": "Перевірити сервери"
+        },
+        "alerts": {
+            "title": "🚨 Активні алерти",
+            "no_alerts": "🎉 Немає активних алертів!",
+            "alert_item": "{icon} *{title}*\n   ⏰ {time}",
+            "critical": "критичний",
+            "warning": "попередження",
+            "info": "інформація",
+            "message": "Повідомлення"
+        },
+        "stats": {
+            "title": "📊 Статистика системи",
+            "site_status": "🌐 Статус сайтів:",
+            "summary": "✅ Підсумок:",
+            "availability": "📈 Доступність:",
+            "time": "⏰ Час:",
+            "no_data": "немає даних",
+            "sites_working": "сайтів працюють",
+            "commands_stats": "📊 Статистика команд:",
+            "total_commands": "Всього команд:",
+            "top_users": "👥 Топ користувачів:",
+            "top_commands": "🔥 Популярні команди:",
+            "for_last_days": "за останні"
+        },
+        "logs": {
+            "title": "📋 Логи системи",
+            "description": "Інформація про логи системи моніторингу.",
+            "paths_title": "📁 Шляхи:",
+            "database": "База даних",
+            "files": "Файли логів",
+            "view_alerts": "🚨 Перегляд алертів:",
+            "unresolved_alerts": "Нерозв'язані алерти",
+            "cleanup_title": "🧹 Очистка:",
+            "cleanup_description": "Очистка старих даних"
+        },
+        "cleanup": {
+            "title": "🧹 Очистка даних",
+            "description": "Очистка старих даних моніторингу.",
+            "result": "✅ Очистка завершена:\n• Видалено перевірок сайтів: {site_checks}\n• Видалено перевірок системи: {system_checks}\n• Позначено алертів як вирішені: {alerts_resolved}",
+            "confirm": "Ви впевнені що хочете очистити старі дані?",
+            "cancelled": "❌ Очистка скасована."
+        }
+    },
+    "en": {
+        "start": {
+            "welcome": "👋 Hello, {name}!",
+            "description": "🤖 I am Monitoring Bot, infrastructure monitoring system.",
+            "features": "📊 Available features:\n• Server status checking\n• Docker containers monitoring\n• Website availability checking\n• Real-time log analysis\n• Infrastructure management",
+            "help_hint": "📋 Use /help for command list\n🔍 Or choose action from menu below:"
+        },
+        "help": {
+            "title": "📋 **FULL COMMAND LIST**",
+            "basic": "🏁 **Basic commands:**",
+            "status": "🔍 **Server checking:**",
+            "sites": "🌐 **Website checking:**",
+            "docker": "🐳 **Docker management:**",
+            "monitoring": "📊 **Monitoring and logs:**",
+            "logs": "🚨 **Log monitoring:**",
+            "info": "ℹ **Information:**",
+            "infra": "🏗 **Infrastructure (if configured):**"
+        },
+        "status": {
+            "checking": "🔍 Checking status...",
+            "checking_301": "🔍 Checking SERV301 status...",
+            "checking_300": "🔍 Checking SERV300 status...",
+            "checking_all": "🔍 Checking all servers...",
+            "in_development": "This command is in development.",
+            "title": "📊 Server status",
+            "app_servers": "🚀 Application servers",
+            "virtual_machines": "💻 Virtual machines",
+            "select_server_type": "Select server type for checking:"
+        },
+        "docker": {
+            "checking": "Checking Docker...",
+            "checking_status": "Docker status checking",
+            "status": "Docker Status",
+            "running": "Running",
+            "check_serv300": "Check SERV300",
+            "check_serv301": "Check SERV301",
+            "restart_serv300": "Restart SERV300",
+            "restart_serv301": "Restart SERV301",
+            "error": "error",
+            "restarting_serv301": "🔄 Restarting Docker on SERV301...",
+            "restarting_serv300": "🔄 Restarting Docker on SERV300...",
+            "restarting_all": "🔄 Restarting Docker on all servers...",
+            "restart_title_serv301": "🔄 *Docker RESTART SERV301:*",
+            "restart_title_serv300": "🔄 *Docker RESTART SERV300:*",
+            "restart_title_all": "🔄 *Docker RESTART - all servers:*",
+            "no_containers": "❌ No containers in configuration",
+            "restart_success": "✅ All containers successfully restarted",
+            "restart_error": "❌ Error",
+            "output": "📋 Output:",
+            "exception": "❌ Exception",
+            "server": "Server",
+            "success": "Success",
+            "all_containers_restarted": "✅ All containers on all servers successfully restarted"
+        },
+        "pve": {
+            "checking": "Checking Proxmox VE...",
+            "checking_status": "Proxmox VE status checking",
+            "status": "Proxmox VE Status",
+            "online": "online",
+            "offline": "offline",
+            "no_servers": "Proxmox VE servers not configured"
+        },
+        "pbs": {
+            "checking": "Checking Proxmox Backup Server...",
+            "checking_status": "Proxmox Backup Server status checking",
+            "status": "Proxmox Backup Server Status",
+            "online": "online",
+            "offline": "offline",
+            "no_servers": "Proxmox Backup Server servers not configured"
+        },
+        "menu": {
+            "help_text": "🤖 **Monitoring Bot** - infrastructure monitoring system\n\n🏁 **BASIC COMMANDS:**\n• /start - Main menu\n• /help - This help\n• /status - Check status of all servers\n\n📊 **SERVER MONITORING:**\n• /status301 - SERV301 status\n• /status300 - SERV300 status\n• /sites - Check all sites\n\n🐳 **DOCKER MANAGEMENT:**\n• Check Docker status via Docker menu\n• Restart containers via Docker menu\n\n🚨 **MONITORING AND ALERTS:**\n• /alerts - Active alerts\n• /stats - System statistics\n• /logs - Log information\n• /monitor_status - Monitor status\n• /monitor_log - Monitor log\n• /cleanup - Cleanup old data\n\n🏗 **INFRASTRUCTURE:**\n• /pve_status - Proxmox VE status\n• /pbs_status - Proxmox Backup Server status\n\n🌍 **SETTINGS:**\n• Change language via menu\n\n⚡ **AUTOMATIC MONITORING:**\n• Site checks every 5 minutes\n• Docker container control\n• Server status tracking\n• Logging all events\n\n📱 **QUICK ACCESS FROM MENU:**\nUse buttons in main menu for quick access to main functions.",
+            "docker": "🐳 Docker",
+            "sites": "🌐 Sites",
+            "help": "📋 Help",
+            "pve": "🏗 PVE",
+            "pbs": "💾 PBS"
+        },
+        "sites": {
+            "title": "🌐 Website checking",
+            "site1": "https://er.edu-post-diploma.kharkov.ua/",
+            "site2": "https://prof.edu-post-diploma.kharkov.ua/",
+            "site3": "https://site3.example.com/ (тестовый)",
+            "site4": "https://site4.example.com/ (тестовый)"
+        },
+        "language": "🌍 Язык",
+        "language": "🌍 Language",
+        "language": {
+            "select": "🌍 Select language / Оберіть мову / Выберите язык:",
+            "changed": "✅ Language changed to: {language}",
+            "current": "Current language: {language}"
+        },
+        "common": {
+            "back": "Back",
+            "error": "❌ Error",
+            "success": "✅ Success",
+            "loading": "⏳ Loading...",
+            "not_implemented": "⏳ This feature is in development",
+            "check_all": "Check all",
+            "restart_all": "Restart all",
+            "unknown_error": "Unknown error"
+        },
+        "monitoring": {
+            "alerts": "🚨 Alerts",
+            "stats": "📊 Statistics",
+            "logs": "📋 Logs",
+            "cleanup": "🧹 Cleanup",
+            "monitor_status": "📈 Monitor Status",
+            "monitor_log": "📝 Monitor Log"
+        },
+        "monitor": {
+            "checking": "Checking monitoring...",
+            "status_title": "📈 Monitor Status",
+            "description": "Automatic infrastructure monitoring system.",
+            "what_monitored": "📊 What is monitored:",
+            "sites": "🌐 Sites",
+            "every_5_min": "every 5 minutes",
+            "system_metrics": "📊 System metrics",
+            "docker": "🐳 Docker containers",
+            "current_status": "📈 Current status:",
+            "database_works": "Database works",
+            "modules_ready": "Modules ready",
+            "scheduler_will_be_added": "Scheduler will be added",
+            "use_commands": "🚀 Use commands:",
+            "full_check": "Full check",
+            "check_sites": "Check sites",
+            "check_servers": "Check servers"
+        },
+        "alerts": {
+            "title": "🚨 Active Alerts",
+            "no_alerts": "🎉 No active alerts!",
+            "alert_item": "{icon} *{title}*\n   ⏰ {time}",
+            "critical": "critical",
+            "warning": "warning",
+            "info": "info",
+            "message": "Message"
+        },
+        "stats": {
+            "title": "📊 System Statistics",
+            "site_status": "🌐 Site Status:",
+            "summary": "✅ Summary:",
+            "availability": "📈 Availability:",
+            "time": "⏰ Time:",
+            "no_data": "no data",
+            "sites_working": "sites working",
+            "commands_stats": "📊 Command Statistics:",
+            "total_commands": "Total commands:",
+            "top_users": "👥 Top Users:",
+            "top_commands": "🔥 Popular Commands:",
+            "for_last_days": "for last"
+        },
+        "logs": {
+            "title": "📋 System Logs",
+            "description": "Information about monitoring system logs.",
+            "paths_title": "📁 Paths:",
+            "database": "Database",
+            "files": "Log files",
+            "view_alerts": "🚨 View Alerts:",
+            "unresolved_alerts": "Unresolved alerts",
+            "cleanup_title": "🧹 Cleanup:",
+            "cleanup_description": "Cleanup old data"
+        },
+        "cleanup": {
+            "title": "🧹 Data Cleanup",
+            "description": "Cleanup old monitoring data.",
+            "result": "✅ Cleanup completed:\n• Deleted site checks: {site_checks}\n• Deleted system checks: {system_checks}\n• Marked alerts as resolved: {alerts_resolved}",
+            "confirm": "Are you sure you want to cleanup old data?",
+            "cancelled": "❌ Cleanup cancelled."
+        }
+    }
+}
+
+# Названия языков для отображения
+LANGUAGE_NAMES = {
+    "ru": "🇷🇺 Русский",
+    "uk": "🇺🇦 Українська", 
+    "en": "🇬🇧 English"
+}
+
+# Язык по умолчанию
+DEFAULT_LANGUAGE = "ru"
