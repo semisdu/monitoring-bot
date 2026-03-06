@@ -33,9 +33,6 @@ async def donate_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             "• TON: `UQCRwgcrOBjEUV79ISt6swrHp2U9Yv2t8o2vANxQRBFeVEjx`\n"
             "• USDT (TRC-20): `TSxk8tgR5JjPn8xJakuejjrJcSnTdZAhFa`\n"
             "• BTC: `bc1q9rjhewccuzhj2drga3gqmrqjdfc362xjsa6hwy`\n\n"
-            
-            "🍺 *Купити автору каву*\n"
-            "• [Buy Me a Coffee](https://buymeacoffee.com/semisdu)\n"
         )
     elif lang == 'en':
         text = (
@@ -50,9 +47,6 @@ async def donate_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             "• TON: `UQCRwgcrOBjEUV79ISt6swrHp2U9Yv2t8o2vANxQRBFeVEjx`\n"
             "• USDT (TRC-20): `TSxk8tgR5JjPn8xJakuejjrJcSnTdZAhFa`\n"
             "• BTC: `bc1q9rjhewccuzhj2drga3gqmrqjdfc362xjsa6hwy`\n\n"
-            
-            "🍺 *Buy me a coffee*\n"
-            "• [Buy Me a Coffee](https://buymeacoffee.com/semisdu)\n"
         )
     else:  # русский по умолчанию
         text = (
@@ -67,9 +61,6 @@ async def donate_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             "• TON: `UQCRwgcrOBjEUV79ISt6swrHp2U9Yv2t8o2vANxQRBFeVEjx`\n"
             "• USDT (TRC-20): `TSxk8tgR5JjPn8xJakuejjrJcSnTdZAhFa`\n"
             "• BTC: `bc1q9rjhewccuzhj2drga3gqmrqjdfc362xjsa6hwy`\n\n"
-            
-            "🍺 *Купить автору кофе*\n"
-            "• [Buy Me a Coffee](https://buymeacoffee.com/semisdu)\n"
         )
     
     keyboard = [[InlineKeyboardButton("🔙 Назад", callback_data="menu")]]

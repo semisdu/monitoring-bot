@@ -219,9 +219,6 @@ MIT
 - USDT (TRC-20): `TSxk8tgR5JjPn8xJakuejjrJcSnTdZAhFa`
 - BTC: `bc1q9rjhewccuzhj2drga3gqmrqjdfc362xjsa6hwy`
 
-**Купить автору кофе**
-- [Buy Me a Coffee](https://buymeacoffee.com/semisdu)
-
 ---
 
 ### 🇬🇧 English
@@ -234,9 +231,6 @@ If the bot helps you in your work, you can thank the author:
 - TON: `UQCRwgcrOBjEUV79ISt6swrHp2U9Yv2t8o2vANxQRBFeVEjx`
 - USDT (TRC-20): `TSxk8tgR5JjPn8xJakuejjrJcSnTdZAhFa`
 - BTC: `bc1q9rjhewccuzhj2drga3gqmrqjdfc362xjsa6hwy`
-
-**Buy me a coffee**
-- [Buy Me a Coffee](https://buymeacoffee.com/semisdu)
 
 ---
 
@@ -251,5 +245,3 @@ If the bot helps you in your work, you can thank the author:
 - USDT (TRC-20): `TSxk8tgR5JjPn8xJakuejjrJcSnTdZAhFa`
 - BTC: `bc1q9rjhewccuzhj2drga3gqmrqjdfc362xjsa6hwy`
 
-**Купити автору каву**
-- [Buy Me a Coffee](https://buymeacoffee.com/semisdu)
