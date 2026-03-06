@@ -16,3 +16,4 @@ __pycache__/
 *.backup
 *.bak
 *~
+config.yml.clean
