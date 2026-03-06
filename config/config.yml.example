@@ -1,9 +1,9 @@
 # Monitoring Bot Configuration Example
-# Скопируйте в config.yml и заполните своими данными
+# Copy to config.yml and fill with your data
 
 telegram:
-  token: "YOUR_BOT_TOKEN_HERE"  # Получить у @BotFather
-  admin_chat_id: YOUR_CHAT_ID   # Ваш Telegram ID
+  token: "YOUR_BOT_TOKEN_HERE"  # Get from @BotFather
+  admin_chat_id: 123456789       # Your Telegram ID
 
 paths:
   base_dir: "/opt/monitoring-bot"
@@ -12,139 +12,69 @@ paths:
   ssh_keys: "/home/username/.ssh"
 
 servers:
-  # Пример сервера с Docker
+  # Example server with Docker
   - id: "example-server"
     name: "Example Server"
     host: "192.168.1.100"
     user: "username"
     port: 22
-    ssh_key: "id_rsa"
-    docker_enabled: true
-
-  # === Наши серверы ===
-  - id: "vm301-courses"
-    name: "Електронна реєстрація на курси"
-    host: "serv301"
-    ip: "192.168.110.69"
-    user: "semis"
-    port: 22
-    ssh_key: "id_ed25519_monitoring"
-    type: "vm"
-    vmid: 301
-    host_server: "pve-host"
+    ssh_key: "id_ed25519"
     docker_enabled: true
     containers:
-      - name: "course_postgres"
+      - name: "postgres"
         service_name: "postgres"
         critical: true
-      - name: "course_app"
+      - name: "app"
         service_name: "web"
         critical: true
 
-  - id: "vm300-competitions"
-    name: "Професійні конкурси"
-    host: "192.168.110.70"
-    ip: "192.168.110.70"
-    user: "semis"
-    port: 22
-    ssh_key: "id_ed25519_monitoring"
-    type: "vm"
-    vmid: 300
-    host_server: "pve-host"
-    docker_enabled: true
-    containers:
-      - name: "profcompetitions-nginx"
-        service_name: "nginx"
-        critical: true
-      - name: "competitions"
-        service_name: "app"
-        critical: true
-
-  - id: "vm102-nginx"
-    name: "NGINX проксі"
-    host: "192.168.110.102"
-    ip: "192.168.110.102"
-    user: "semis"
-    port: 22
-    ssh_key: "id_ed25519_monitoring"
-    type: "vm"
-    vmid: 102
-    host_server: "pve-host"
-    nginx_enabled: true
-
-  - id: "pve-host"
+  # Example PVE server
+  - id: "pve-example"
     name: "PVE Hypervisor"
-    host: "192.168.110.99"
-    ip: "192.168.110.99"
-    user: "semis"
+    host: "192.168.1.99"
+    user: "username"
     port: 22
-    ssh_key: "id_ed25519_monitoring"
+    ssh_key: "id_ed25519"
     type: "pve"
     api_enabled: true
-    api_host: "192.168.110.99"
+    api_host: "192.168.1.99"
     api_port: 8006
     api_user: "root@pam"
     api_verify_ssl: false
-    vms: [101, 102, 300, 301]
+    vms: [100, 101]
 
-  - id: "pbs-backup"
+  # Example PBS server
+  - id: "pbs-example"
     name: "Backup Server"
-    host: "192.168.110.37"
-    ip: "192.168.110.37"
+    host: "192.168.1.37"
     user: "root"
     port: 22
-    ssh_key: "id_ed25519_monitoring"
+    ssh_key: "id_ed25519"
     type: "pbs"
     api_enabled: true
-    api_host: "192.168.110.37"
+    api_host: "192.168.1.37"
     api_port: 8007
     api_user: "root@pbs"
     api_verify_ssl: false
     datastore: "local"
 
-# ==================== САЙТЫ ====================
 sites:
-  - name: "Професійні конкурси"
-    url: "https://prof.edu-post-diploma.kharkov.ua"
-    server_id: "vm300-competitions"
+  - name: "Example Site"
+    url: "https://example.com"
+    server_id: "example-server"
     check_interval: 300
     critical: true
     expected_status: 200
     timeout: 10
 
-  - name: "Електронна реєстрація на курси"
-    url: "https://er.edu-post-diploma.kharkov.ua"
-    server_id: "vm301-courses"
-    check_interval: 300
-    critical: true
-    expected_status: 200
-    timeout: 10
-
-  - name: "Портал"
-    url: "http://portal.edu-post-diploma.kharkov.ua"
+  - name: "External Site"
+    url: "http://example.org"
     type: "external"
     check_interval: 300
     critical: true
     expected_status: 200
     timeout: 10
 
-  - name: "Головний сайт Академії"
-    url: "http://edu-post-diploma.kharkov.ua"
-    type: "external"
-    check_interval: 300
-    critical: true
-    expected_status: 200
-    timeout: 10
-
-  - name: "Дистанційна освіта"
-    url: "http://newdl.edu-post-diploma.kharkov.ua"
-    type: "external"
-    check_interval: 300
-    critical: true
-    expected_status: 200
-    timeout: 10
-
-# ==================== РАСПИСАНИЕ ====================
 schedule:
   status_check: "*/5 * * * *"
   log_check: "*/5 * * * *"
@@ -155,7 +85,6 @@ schedule:
   docker_check: "*/10 * * * *"
   site_check: "*/15 * * * *"
 
-# ==================== АЛЕРТЫ ====================
 alert_config:
   disk_warning_percent: 80
   disk_critical_percent: 90
@@ -171,14 +100,12 @@ alert_config:
   backup_age_warning_hours: 48
   backup_age_critical_hours: 72
 
-# ==================== ЛОГИРОВАНИЕ ====================
 logging:
   level: "INFO"
   format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
   max_size_mb: 10
   backup_count: 5
 
-# ==================== ФУНКЦИОНАЛ ====================
 features:
   enable_infra_commands: true
   enable_log_monitoring: false
