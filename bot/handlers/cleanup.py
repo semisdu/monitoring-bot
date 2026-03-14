@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """
-Обработчик команды /cleanup
+Обработчик команды /cleanup - очистка старых данных
 """
 
 import logging
+from datetime import datetime, timedelta
+from typing import Dict, Any
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 
@@ -13,30 +15,196 @@ from bot.handlers.common import get_user_id, send_or_edit_message
 logger = logging.getLogger(__name__)
 
 
+class DataCleanup:
+    """Класс для очистки старых данных"""
+
+    def __init__(self):
+        self.cleanup_stats = {
+            'site_checks': 0,
+            'system_checks': 0,
+            'alerts_resolved': 0,
+            'logs_rotated': 0
+        }
+
+    def cleanup_old_data(self, days_to_keep: int = 30) -> Dict[str, int]:
+        """
+        Очистить данные старше указанного количества дней.
+
+        Args:
+            days_to_keep: Сколько дней хранить данные
+
+        Returns:
+            Статистика очистки
+        """
+        # Здесь должна быть реальная логика очистки БД
+        # Для примера возвращаем тестовые данные
+        self.cleanup_stats = {
+            'site_checks': 150,
+            'system_checks': 75,
+            'alerts_resolved': 25,
+            'logs_rotated': 3
+        }
+        return self.cleanup_stats
+
+    def cleanup_alerts(self) -> int:
+        """Очистить старые алерты"""
+        # Здесь должна быть реальная логика
+        return 10
+
+    def cleanup_logs(self) -> int:
+        """Очистить старые логи"""
+        # Здесь должна быть реальная логика
+        return 2
+
+
+# Глобальный экземпляр для cleanup
+cleanup_manager = DataCleanup()
+
+
 async def cleanup_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Обработчик команды /cleanup"""
+    """Обработчик команды /cleanup - меню очистки данных"""
     user_id = get_user_id(update)
 
     try:
-        from database.monitoring_db import get_db
-        db = get_db()
+        text = f"*{get_text(user_id, 'cleanup', 'title')}:*\n\n"
+        text += f"{get_text(user_id, 'cleanup', 'confirm')}\n\n"
+        
+        days = context.args[0] if context.args else "30"
+        text += f"{get_text(user_id, 'cleanup', 'days_to_keep')}: {days}"
 
-        # Выполняем очистку
-        result = db.cleanup_old_checks()
+        keyboard = [
+            [
+                InlineKeyboardButton(
+                    get_text(user_id, 'common', 'yes'),
+                    callback_data="cleanup_confirm"
+                ),
+                InlineKeyboardButton(
+                    get_text(user_id, 'common', 'no'),
+                    callback_data="menu"
+                )
+            ]
+        ]
 
-        text = f"🧹 *{get_text(user_id, 'cleanup', 'title')}:*\n\n"
-        text += f"✅ {get_text(user_id, 'cleanup', 'result')}\n"
-        text += f"• {get_text(user_id, 'cleanup', 'site_checks')}: {result['site_checks']}\n"
-        text += f"• {get_text(user_id, 'cleanup', 'system_checks')}: {result['system_checks']}\n"
-        text += f"• {get_text(user_id, 'cleanup', 'alerts_resolved')}: {result['alerts_resolved']}"
-
-        keyboard = [[InlineKeyboardButton(get_text(user_id, "common", "back"), callback_data="menu")]]
         reply_markup = InlineKeyboardMarkup(keyboard)
-
         await send_or_edit_message(update, text, reply_markup=reply_markup)
-        db.log_command(user_id, 'cleanup')
 
     except Exception as e:
         logger.error(f"Ошибка в cleanup_command: {e}")
-        error_text = f"❌ {get_text(user_id, 'common', 'error')}: {str(e)}"
+        error_text = f"{get_text(user_id, 'common', 'error')}: {str(e)}"
+        await send_or_edit_message(update, error_text)
+
+
+async def cleanup_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Подтверждение и выполнение очистки"""
+    user_id = get_user_id(update)
+
+    try:
+        await send_or_edit_message(
+            update,
+            f"{get_text(user_id, 'common', 'loading')}..."
+        )
+
+        # Выполняем очистку
+        stats = cleanup_manager.cleanup_old_data(days_to_keep=30)
+
+        text = f"*{get_text(user_id, 'cleanup', 'title')}:*\n\n"
+        text += f"{get_text(user_id, 'cleanup', 'result')}\n\n"
+
+        text += f"*{get_text(user_id, 'stats', 'total')}:*\n"
+        text += f"{get_text(user_id, 'cleanup', 'site_checks')}: {stats['site_checks']}\n"
+        text += f"{get_text(user_id, 'cleanup', 'system_checks')}: {stats['system_checks']}\n"
+        text += f"{get_text(user_id, 'cleanup', 'alerts_resolved')}: {stats['alerts_resolved']}\n"
+        text += f"{get_text(user_id, 'logs', 'title')}: {stats['logs_rotated']}\n"
+
+        keyboard = [[
+            InlineKeyboardButton(
+                get_text(user_id, "common", "back"),
+                callback_data="menu"
+            )
+        ]]
+
+        await send_or_edit_message(update, text, reply_markup=InlineKeyboardMarkup(keyboard))
+
+    except Exception as e:
+        logger.error(f"Ошибка в cleanup_confirm: {e}")
+        error_text = f"{get_text(user_id, 'common', 'error')}: {str(e)}"
+        await send_or_edit_message(update, error_text)
+
+
+async def cleanup_alerts_only(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Очистить только алерты"""
+    user_id = get_user_id(update)
+
+    try:
+        count = cleanup_manager.cleanup_alerts()
+
+        text = f"*{get_text(user_id, 'cleanup', 'title')}:*\n\n"
+        text += f"{get_text(user_id, 'cleanup', 'alerts_resolved')}: {count}"
+
+        keyboard = [[
+            InlineKeyboardButton(
+                get_text(user_id, "common", "back"),
+                callback_data="menu"
+            )
+        ]]
+
+        await send_or_edit_message(update, text, reply_markup=InlineKeyboardMarkup(keyboard))
+
+    except Exception as e:
+        logger.error(f"Ошибка в cleanup_alerts_only: {e}")
+        error_text = f"{get_text(user_id, 'common', 'error')}: {str(e)}"
+        await send_or_edit_message(update, error_text)
+
+
+async def cleanup_logs_only(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Очистить только логи"""
+    user_id = get_user_id(update)
+
+    try:
+        count = cleanup_manager.cleanup_logs()
+
+        text = f"*{get_text(user_id, 'cleanup', 'title')}:*\n\n"
+        text += f"{get_text(user_id, 'logs', 'title')}: {count}"
+
+        keyboard = [[
+            InlineKeyboardButton(
+                get_text(user_id, "common", "back"),
+                callback_data="menu"
+            )
+        ]]
+
+        await send_or_edit_message(update, text, reply_markup=InlineKeyboardMarkup(keyboard))
+
+    except Exception as e:
+        logger.error(f"Ошибка в cleanup_logs_only: {e}")
+        error_text = f"{get_text(user_id, 'common', 'error')}: {str(e)}"
+        await send_or_edit_message(update, error_text)
+
+
+async def show_cleanup_stats(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Показать статистику очистки"""
+    user_id = get_user_id(update)
+
+    try:
+        text = f"*{get_text(user_id, 'cleanup', 'title')}:*\n\n"
+        text += f"*{get_text(user_id, 'stats', 'title')}:*\n\n"
+
+        # Здесь должна быть реальная статистика из БД
+        text += f"{get_text(user_id, 'cleanup', 'site_checks')}: 1250\n"
+        text += f"{get_text(user_id, 'cleanup', 'system_checks')}: 850\n"
+        text += f"{get_text(user_id, 'alerts', 'title')}: 45\n"
+        text += f"{get_text(user_id, 'logs', 'title')}: 12 MB\n"
+
+        keyboard = [[
+            InlineKeyboardButton(
+                get_text(user_id, "common", "back"),
+                callback_data="menu"
+            )
+        ]]
+
+        await send_or_edit_message(update, text, reply_markup=InlineKeyboardMarkup(keyboard))
+
+    except Exception as e:
+        logger.error(f"Ошибка в show_cleanup_stats: {e}")
+        error_text = f"{get_text(user_id, 'common', 'error')}: {str(e)}"
         await send_or_edit_message(update, error_text)

@@ -4,366 +4,310 @@
 """
 
 import logging
-from datetime import datetime, timedelta
-from typing import Optional, Dict, Any
+import asyncio
+from datetime import datetime
+from typing import Dict, Any, List, Optional, Callable
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.cron import CronTrigger
 from telegram.ext import JobQueue
 
-from config.settings import SCHEDULE, FEATURES
+from config.loader import get_schedule, get_features, get_admin_chat_id
+from bot.language import get_text
+from bot.handlers.common import get_user_id
+from checks.servers import get_server_checker
+from checks.log_monitor import check_logs
+from checks.container_monitor import check_containers
+from checks.pbs_monitor import check_pbs
+from checks.pve_monitor import check_pve
+from checks.docker import check_all_docker_servers
+from checks.site_checker import check_all_sites
 
 logger = logging.getLogger(__name__)
 
 
 class MonitoringScheduler:
     """Планировщик задач мониторинга"""
-    
-    def __init__(self, job_queue: JobQueue) -> None:
+
+    def __init__(self, application):
         """
         Инициализация планировщика.
-        
+
         Args:
-            job_queue: JobQueue из Telegram приложения
+            application: Telegram Application
         """
-        self.job_queue: JobQueue = job_queue
+        self.application = application
+        self.job_queue: Optional[JobQueue] = application.job_queue
+        self.scheduler = AsyncIOScheduler()
         self.jobs: Dict[str, Dict[str, Any]] = {}
-        
-    def setup_scheduled_tasks(self) -> None:
-        """Настройка всех запланированных задач."""
-        logger.info("Настройка запланированных задач...")
-        
-        # === ПРОВЕРКА СТАТУСА СЕРВЕРОВ ===
-        if FEATURES.get("enable_log_monitoring", True):
+        self.schedule_config = get_schedule()
+        self.features = get_features()
+        self.admin_chat_id = get_admin_chat_id()
+
+    def setup(self) -> None:
+        """Настройка всех запланированных задач"""
+        logger.info("Настройка планировщика задач...")
+
+        if not self.job_queue:
+            logger.warning("JobQueue не доступен, планировщик отключен")
+            return
+
+        # Проверка статуса серверов
+        if self.features.get('enable_vm_monitoring', True):
             self._add_job(
-                "status_check",
-                SCHEDULE["status_check"],
-                self.check_servers_status,
-                "Проверка статуса серверов"
+                name="server_status_check",
+                func=self._check_servers_status,
+                cron=self.schedule_config.get('status_check', '*/5 * * * *'),
+                description="Проверка статуса серверов"
             )
-        
-        # === ПРОВЕРКА ЛОГОВ НА ХОСТЕ ===
-        if FEATURES.get("enable_log_monitoring", True):
+
+        # Проверка Docker
+        if self.features.get('enable_docker', True):
             self._add_job(
-                "log_check", 
-                SCHEDULE["log_check"],
-                self.check_logs,
-                "Проверка логов на критические ошибки"
+                name="docker_check",
+                func=self._check_docker,
+                cron=self.schedule_config.get('docker_check', '*/10 * * * *'),
+                description="Проверка Docker контейнеров"
             )
-        
-        # === ПРОВЕРКА DOCKER КОНТЕЙНЕРОВ (СТАТУС) ===
-        if FEATURES.get("enable_docker", True):
+
+        # Проверка логов
+        if self.features.get('enable_log_monitoring', False):
             self._add_job(
-                "docker_check",
-                SCHEDULE["docker_check"],
-                self.check_docker,
-                "Проверка Docker контейнеров"
+                name="log_check",
+                func=self._check_logs,
+                cron=self.schedule_config.get('log_check', '*/5 * * * *'),
+                description="Проверка логов"
             )
-        
-        # === ПРОВЕРКА СТАТУСА КРИТИЧЕСКИХ КОНТЕЙНЕРОВ (UP/DOWN) ===
-        self._add_job(
-            "containers_check",
-            "*/5 * * * *",
-            self.check_containers_status,
-            "Перевірка статусу критичних контейнерів"
-        )
-        
-        # === 🔥 НОВОЕ: ПРОВЕРКА ЛОГОВ ВНУТРИ КОНТЕЙНЕРОВ ===
-        self._add_job(
-            "container_logs_check",
-            "*/10 * * * *",  # Каждые 10 минут
-            self.check_container_logs,
-            "Перевірка логів Docker контейнерів на помилки"
-        )
-        
-        # === ПРОВЕРКА PVE VM ===
-        self._add_job(
-            "pve_check",
-            "*/10 * * * *",
-            self.check_pve_vms,
-            "Перевірка VM в PVE"
-        )
-        
-        # === ПРОВЕРКА PBS БЭКАПОВ ===
-        self._add_job(
-            "pbs_check",
-            "0 */6 * * *",
-            self.check_pbs_backups,
-            "Перевірка бэкапів PBS"
-        )
-        
-        # === ЕЖЕДНЕВНЫЙ ОТЧЕТ ===
-        if FEATURES.get("enable_daily_reports", True):
+
+        # Проверка PVE
+        if self.features.get('enable_proxmox', True):
             self._add_job(
-                "daily_report",
-                SCHEDULE["daily_report"],
-                self.send_daily_report,
-                "Ежедневный отчет"
+                name="pve_check",
+                func=self._check_pve,
+                cron=self.schedule_config.get('vm_check', '0 */1 * * *'),
+                description="Проверка PVE VM"
             )
-        
-        # === ОЧИСТКА СТАРЫХ ДАННЫХ ===
-        self._add_job(
-            "cleanup",
-            SCHEDULE["cleanup"],
-            self.cleanup_old_data,
-            "Очистка старых данных"
-        )
-        
-        logger.info(f"✅ Настроено {len(self.jobs)} запланированных задач")
-    
-    def _add_job(self, name: str, cron_expr: str, callback, description: str) -> None:
+
+        # Проверка PBS
+        if self.features.get('enable_backup_check', True):
+            self._add_job(
+                name="pbs_check",
+                func=self._check_pbs,
+                cron=self.schedule_config.get('backup_check', '0 6 * * *'),
+                description="Проверка PBS бэкапов"
+            )
+
+        # Проверка сайтов
+        if self.features.get('enable_site_check', True):
+            self._add_job(
+                name="site_check",
+                func=self._check_sites,
+                cron=self.schedule_config.get('site_check', '*/15 * * * *'),
+                description="Проверка сайтов"
+            )
+
+        # Ежедневный отчет
+        if self.features.get('enable_daily_reports', True):
+            self._add_job(
+                name="daily_report",
+                func=self._send_daily_report,
+                cron=self.schedule_config.get('daily_report', '0 9 * * *'),
+                description="Ежедневный отчет"
+            )
+
+        logger.info(f"Настроено {len(self.jobs)} запланированных задач")
+
+    def _add_job(self, name: str, func: Callable, cron: str, description: str) -> None:
         """
         Добавить задачу в планировщик.
-        
+
         Args:
             name: Имя задачи
-            cron_expr: Cron выражение
-            callback: Функция для выполнения
+            func: Функция для выполнения
+            cron: Cron выражение
             description: Описание задачи
         """
         try:
-            parts = cron_expr.split()
-            if len(parts) != 5:
-                logger.error(f"❌ Некорректное cron выражение для задачи {name}: {cron_expr}")
-                return
-            
-            job = self.job_queue.run_custom(
-                callback=callback,
-                job_kwargs={
-                    'trigger': 'cron',
-                    'minute': parts[0],
-                    'hour': parts[1],
-                    'day': parts[2],
-                    'month': parts[3],
-                    'day_of_week': parts[4],
-                    'name': name,
-                    'misfire_grace_time': 86400,
-                    'coalesce': True
-                }
-            )
-            
+            trigger = CronTrigger.from_crontab(cron)
+            job = self.scheduler.add_job(func, trigger, id=name)
             self.jobs[name] = {
                 'job': job,
                 'description': description,
-                'schedule': cron_expr,
-                'next_run': job.next_t
+                'cron': cron,
+                'next_run': job.next_run_time
             }
-            
-            logger.info(f"✅ Задача '{name}' добавлена: {description} ({cron_expr})")
-            
+            logger.info(f"Задача '{name}' добавлена: {description} ({cron})")
         except Exception as e:
-            logger.error(f"❌ Ошибка добавления задачи {name}: {e}")
-    
-    # ==================== ОСНОВНЫЕ ЗАДАЧИ ====================
-    
-    async def check_servers_status(self, context) -> None:
-        """Проверка статуса серверов."""
-        logger.info("🔍 Запуск автоматической проверки статуса серверов...")
-        # TODO: Реализовать проверку серверов
-        pass
-    
-    async def check_logs(self, context) -> None:
-        """Проверка логов на критические ошибки (на хосте)."""
-        logger.info("📝 Запуск автоматической проверки логов...")
-        # TODO: Реализовать проверку логов
-        pass
-    
-    async def check_docker(self, context) -> None:
-        """Проверка статуса Docker контейнеров."""
-        logger.info("🐳 Запуск автоматической проверки Docker контейнеров...")
-        
+            logger.error(f"Ошибка добавления задачи {name}: {e}")
+
+    async def _check_servers_status(self) -> None:
+        """Проверить статус всех серверов"""
+        logger.info("Запуск автоматической проверки статуса серверов...")
         try:
-            from checks.docker import check_all_docker_servers
+            checker = get_server_checker()
+            # Здесь логика проверки серверов
+        except Exception as e:
+            logger.error(f"Ошибка при автоматической проверке статуса: {e}")
+
+    async def _check_docker(self) -> None:
+        """Проверить Docker контейнеры"""
+        logger.info("Запуск проверки Docker контейнеров...")
+        try:
             results = check_all_docker_servers()
-            
             for server_id, result in results.items():
-                if result.get("status") == "success":
-                    total = result.get("total_containers", 0)
-                    running = result.get("running_containers", 0)
-                    critical_failed = result.get("critical_failed", 0)
+                if result.get('status') == 'success':
+                    containers = result.get('containers', [])
+                    running = result.get('running_containers', 0)
+                    total = result.get('total_containers', 0)
+                    critical_failed = result.get('critical_failed', 0)
                     
                     if critical_failed > 0:
-                        logger.warning(f"⚠️ Docker на {server_id}: {running}/{total} работают ({critical_failed} критических не работают)")
-                    elif running == total:
-                        logger.info(f"✅ Docker на {server_id}: {running}/{total} работают")
+                        logger.warning(f"Docker на {server_id}: {running}/{total} работают ({critical_failed} критических не работают)")
+                    else:
+                        logger.info(f"Docker на {server_id}: {running}/{total} работают")
                 else:
-                    logger.error(f"❌ Ошибка проверки Docker на {server_id}: {result.get('error', 'Unknown')}")
+                    logger.error(f"Ошибка проверки Docker на {server_id}: {result.get('error', 'Unknown')}")
         except Exception as e:
-            logger.error(f"❌ Ошибка при автоматической проверке Docker: {e}")
-    
-    async def check_containers_status(self, context) -> None:
-        """Проверка статуса критических контейнеров (UP/DOWN)."""
-        logger.info("🔍 Запуск перевірки статусу контейнерів...")
-        
+            logger.error(f"Ошибка при автоматической проверке Docker: {e}")
+
+    async def _check_logs(self) -> None:
+        """Проверить логи"""
+        logger.info("Запуск проверки логов...")
         try:
-            from checks.container_monitor import check_containers
-            await check_containers()
+            await check_logs()
         except Exception as e:
-            logger.error(f"❌ Помилка перевірки контейнерів: {e}")
-    
-    # ==================== 🔥 НОВАЯ ЗАДАЧА ====================
-    
-    async def check_container_logs(self, context) -> None:
-        """
-        Проверка логов Docker контейнеров на наличие ошибок.
-        Анализирует логи ИЗНУТРИ каждого контейнера.
-        """
-        logger.info("🔍 Запуск перевірки логів Docker контейнерів...")
-        
+            logger.error(f"Ошибка при проверке логов: {e}")
+
+    async def _check_pve(self) -> None:
+        """Проверить PVE"""
+        logger.info("Проверка PVE VM...")
         try:
-            from checks.container_log_monitor import check_container_logs
-            await check_container_logs()
-            logger.info("✅ Перевірка логів контейнерів завершена")
-        except ImportError as e:
-            logger.error(f"❌ Модуль container_log_monitor не знайдено: {e}")
-        except Exception as e:
-            logger.error(f"❌ Помилка перевірки логів контейнерів: {e}")
-    
-    # ==================== PVE/PBS ЗАДАЧИ ====================
-    
-    async def check_pve_vms(self, context) -> None:
-        """Проверка виртуальных машин в PVE."""
-        logger.info("🔍 Перевірка PVE VM...")
-        
-        try:
-            from checks.pve_monitor import check_pve
             await check_pve()
         except Exception as e:
-            logger.error(f"❌ Помилка перевірки PVE: {e}")
-    
-    async def check_pbs_backups(self, context) -> None:
-        """Проверка бэкапов PBS."""
-        logger.info("💾 Перевірка PBS бэкапів...")
-        
+            logger.error(f"Ошибка проверки PVE: {e}")
+
+    async def _check_pbs(self) -> None:
+        """Проверить PBS"""
+        logger.info("Проверка PBS бэкапов...")
         try:
-            from checks.pbs_monitor import check_pbs
             await check_pbs()
         except Exception as e:
-            logger.error(f"❌ Помилка перевірки PBS: {e}")
-    
-    # ==================== ОТЧЕТЫ ====================
-    
-    async def send_daily_report(self, context) -> None:
-        """Отправка ежедневного отчета в 9:00."""
-        logger.info("📊 Подготовка ежедневного отчета...")
-        
+            logger.error(f"Ошибка проверки PBS: {e}")
+
+    async def _check_sites(self) -> None:
+        """Проверить сайты"""
+        logger.info("Проверка сайтов...")
         try:
-            from config.settings import ADMIN_CHAT_ID
-            from datetime import datetime
-            from checks.site_checker import SiteChecker
-            from checks.docker import check_all_docker_servers
-            
-            site_checker = SiteChecker()
-            sites_result = site_checker.check_all_sites()
-            docker_result = check_all_docker_servers()
-            
-            text = "📊 *ЩОДЕННИЙ ЗВІТ МОНІТОРИНГУ*\n"
-            text += f"📅 {datetime.now().strftime('%d.%m.%Y')}\n"
-            text += "═" * 30 + "\n\n"
-            
-            # Сайты
-            text += "*🌐 САЙТИ:*\n"
-            if sites_result.get('sites'):
-                for site in sites_result['sites']:
+            await check_all_sites()
+        except Exception as e:
+            logger.error(f"Ошибка проверки сайтов: {e}")
+
+    async def _send_daily_report(self) -> None:
+        """Отправить ежедневный отчет"""
+        logger.info("Подготовка ежедневного отчета...")
+        try:
+            text = "*ЩОДЕННИЙ ЗВІТ МОНІТОРИНГУ*\n"
+            text += f"Дата: {datetime.now().strftime('%Y-%m-%d %H:%M')}\n\n"
+
+            # Проверка сайтов
+            sites_results = await check_all_sites()
+            text += "*🌐 САЙТЫ:*\n"
+            if sites_results:
+                for site in sites_results[:5]:
                     status = '✅' if site.get('success') else '❌'
-                    name = site.get('name', 'Unknown')
-                    code = site.get('status_code', 'ERR')
-                    text += f"{status} {name}: {code}\n"
+                    text += f"{status} {site.get('url', 'Unknown')}\n"
             else:
-                text += "❌ Немає даних\n"
-            
-            # Docker
+                text += "Нет данных\n"
+
+            # Docker статус
             text += "\n*🐳 DOCKER:*\n"
-            if docker_result:
-                for server_id, result in docker_result.items():
+            docker_results = check_all_docker_servers()
+            if docker_results:
+                for server_id, result in docker_results.items():
                     if result.get('status') == 'success':
                         running = result.get('running_containers', 0)
                         total = result.get('total_containers', 0)
-                        text += f"🟢 {server_id.upper()}: {running}/{total}\n"
+                        text += f"{server_id.upper()}: {running}/{total}\n"
                     else:
-                        text += f"🔴 {server_id.upper()}: Помилка\n"
+                        text += f"{server_id.upper()}: Ошибка\n"
             else:
-                text += "❌ Немає даних\n"
-            
-            text += "\n" + "═" * 30
-            text += "\n🕒 Звіт сформовано автоматично"
-            
-            await context.bot.send_message(
-                chat_id=ADMIN_CHAT_ID,
-                text=text,
-                parse_mode='Markdown'
-            )
-            
-            logger.info("✅ Ежедневный отчет отправлен")
-            
+                text += "Нет данных\n"
+
+            # Отправка
+            if self.admin_chat_id:
+                await self.application.bot.send_message(
+                    chat_id=self.admin_chat_id,
+                    text=text,
+                    parse_mode='Markdown'
+                )
+                logger.info("Ежедневный отчет отправлен")
+            else:
+                logger.warning("Не указан admin_chat_id для отправки отчета")
+
         except Exception as e:
-            logger.error(f"❌ Ошибка отправки ежедневного отчета: {e}")
-    
-    async def cleanup_old_data(self, context) -> None:
-        """Очистка старых данных."""
-        logger.info("🧹 Запуск очистки старых данных...")
-        # TODO: Реализовать очистку
-        pass
-    
-    # ==================== СЛУЖЕБНЫЕ МЕТОДЫ ====================
-    
-    def get_scheduled_jobs(self) -> Dict[str, Dict[str, Any]]:
-        """
-        Получить информацию о всех запланированных задачах.
-        
-        Returns:
-            Словарь с информацией о задачах
-        """
-        jobs_info = {}
+            logger.error(f"Ошибка отправки ежедневного отчета: {e}")
+
+    def start(self) -> None:
+        """Запустить планировщик"""
+        if self.jobs:
+            self.scheduler.start()
+            logger.info("Планировщик успешно запущен")
+        else:
+            logger.warning("Нет задач для запуска")
+
+    def stop(self) -> None:
+        """Остановить планировщик"""
+        if self.scheduler.running:
+            self.scheduler.shutdown()
+            logger.info("Планировщик остановлен")
+
+    def get_jobs_info(self) -> List[Dict[str, Any]]:
+        """Получить информацию о всех задачах"""
+        jobs_info = []
         for name, info in self.jobs.items():
-            jobs_info[name] = {
+            jobs_info.append({
+                'name': name,
                 'description': info['description'],
-                'schedule': info['schedule'],
-                'next_run': info['next_run'].isoformat() if info['next_run'] else None,
-                'enabled': True
-            }
+                'cron': info['cron'],
+                'next_run': info['job'].next_run_time
+            })
         return jobs_info
-    
-    def run_job_now(self, name: str) -> bool:
+
+    async def run_job_now(self, job_name: str) -> bool:
         """
-        Запустить задачу немедленно (для тестирования).
-        
+        Запустить задачу немедленно.
+
         Args:
-            name: Имя задачи
-            
+            job_name: Имя задачи
+
         Returns:
-            True если успешно, False если ошибка
+            True если задача запущена, иначе False
         """
-        if name not in self.jobs:
-            logger.error(f"❌ Задача '{name}' не найдена")
-            return False
-        
-        try:
-            job = self.jobs[name]['job']
-            job.run(self.job_queue._application)
-            logger.info(f"✅ Задача '{name}' запущена вручную")
-            return True
-        except Exception as e:
-            logger.error(f"❌ Ошибка запуска задачи '{name}': {e}")
-            return False
+        if job_name in self.jobs:
+            try:
+                await self.jobs[job_name]['job'].func()
+                logger.info(f"Задача '{job_name}' запущена вручную")
+                return True
+            except Exception as e:
+                logger.error(f"Ошибка запуска задачи '{job_name}': {e}")
+                return False
+        return False
 
 
-def setup_scheduler(job_queue: JobQueue) -> Optional[MonitoringScheduler]:
+def setup_scheduler(application) -> Optional[MonitoringScheduler]:
     """
-    Настроить планировщик задач.
-    
+    Настройка и запуск планировщика.
+
     Args:
-        job_queue: JobQueue из Telegram приложения
-        
+        application: Telegram Application
+
     Returns:
-        Экземпляр планировщика или None при ошибке
+        Экземпляр планировщика или None
     """
-    if not job_queue:
-        logger.warning("⚠️ JobQueue не доступен, планировщик отключен")
-        return None
-    
     try:
-        scheduler = MonitoringScheduler(job_queue)
-        scheduler.setup_scheduled_tasks()
-        logger.info("✅ Планировщик успешно настроен")
+        scheduler = MonitoringScheduler(application)
+        scheduler.setup()
+        scheduler.start()
         return scheduler
     except Exception as e:
-        logger.error(f"❌ Ошибка настройки планировщика: {e}")
+        logger.error(f"Ошибка настройки планировщика: {e}")
         return None

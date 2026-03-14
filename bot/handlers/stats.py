@@ -1,77 +1,169 @@
 #!/usr/bin/env python3
 """
-Обработчик команды /stats
+Обработчик команды /stats - статистика системы
 """
 
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 
 from bot.language import get_text
 from bot.handlers.common import get_user_id, send_or_edit_message
+from config.loader import get_all_servers, get_sites, get_docker_server_ids
+from checks.site_checker import check_all_sites
+from checks.docker import check_all_docker_servers
 
 logger = logging.getLogger(__name__)
 
 
 async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Обработчик команды /stats"""
+    """Обработчик команды /stats - статистика системы"""
     user_id = get_user_id(update)
 
     try:
-        from checks.site_checker import SiteChecker
-        from database.monitoring_db import get_db
-
         await send_or_edit_message(update, f"{get_text(user_id, 'common', 'loading')}...")
-
-        site_checker = SiteChecker()
-        site_result = site_checker.check_all_sites()
-        db = get_db()
-        command_stats = db.get_command_stats()
 
         text = f"*{get_text(user_id, 'stats', 'title')}:*\n\n"
 
-        # Статус сайтов
-        if site_result.get('success'):
-            sites = site_result.get('sites', [])
-            successful = sum(1 for s in sites if s.get('status') == 'up')
-            total = len(sites)
+        # Общая информация
+        servers = get_all_servers()
+        sites = get_sites()
+        docker_servers = get_docker_server_ids()
 
-            text += f"*{get_text(user_id, 'sites', 'title')}:*\n"
-            for site in sites[:3]:
-                status_icon = '🟢' if site.get('status') == 'up' else '🔴'
-                response_time = site.get('response_time', 0)
-                text += f"{status_icon} {site.get('name', 'Unknown')}: {response_time:.0f}ms\n"
+        text += f"*{get_text(user_id, 'common', 'info')}:*\n"
+        text += f"{get_text(user_id, 'pve', 'vms')}: {len(servers)}\n"
+        text += f"{get_text(user_id, 'sites', 'title')}: {len(sites)}\n"
+        text += f"{get_text(user_id, 'docker', 'containers')}: {len(docker_servers)} {get_text(user_id, 'docker', 'status')}\n\n"
 
-            if total > 3:
-                text += f"   ... {get_text(user_id, 'common', 'and_more')} {total - 3}\n"
+        # Статистика по сайтам
+        text += f"*{get_text(user_id, 'sites', 'title')}:*\n"
+        sites_results = await check_all_sites()
+        
+        if sites_results:
+            successful = sum(1 for s in sites_results if s.get('success') and s.get('status') == 200)
+            total = len(sites_results)
+            
+            for site in sites_results[:5]:
+                url = site.get('url', 'Unknown')
+                if site.get('success') and site.get('status') == 200:
+                    text += f"{url} - {get_text(user_id, 'sites', 'up')}\n"
+                else:
+                    text += f"{url} - {get_text(user_id, 'sites', 'down')}\n"
+            
+            if total > 5:
+                text += f"... {get_text(user_id, 'common', 'and_more')} {total - 5}\n"
+            
+            text += f"\n{get_text(user_id, 'stats', 'total')}: {successful}/{total}\n\n"
+        else:
+            text += f"{get_text(user_id, 'common', 'no_data')}\n\n"
 
-            text += f"\n✅ *{get_text(user_id, 'stats', 'total')}:* {successful}/{total} {get_text(user_id, 'sites', 'title').lower()}\n"
-            if total > 0:
-                availability = (successful / total) * 100
-                text += f"{get_text(user_id, 'stats', 'availability')}: {availability:.1f}%\n"
-
-        # Статистика команд
-        text += f"\n*{get_text(user_id, 'stats', 'commands')}:*\n"
-        text += f"{get_text(user_id, 'stats', 'total_commands')}: {command_stats.get('total_commands', 0)}\n"
-
-        # Топ команд
-        command_stats_list = command_stats.get('command_stats', [])
-        if command_stats_list:
-            text += f"\n*{get_text(user_id, 'stats', 'popular')}:*\n"
-            for i, stat in enumerate(command_stats_list[:5], 1):
-                text += f"{i}. {stat['command']}: {stat['count']}\n"
-
-        # Время
-        text += f"\n{get_text(user_id, 'common', 'time')}: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+        # Статистика по Docker
+        text += f"*{get_text(user_id, 'docker', 'containers')}:*\n"
+        docker_results = check_all_docker_servers()
+        
+        if docker_results:
+            total_containers = 0
+            running_containers = 0
+            
+            for server_id, result in docker_results.items():
+                if result.get('status') == 'success':
+                    total = result.get('total_containers', 0)
+                    running = result.get('running_containers', 0)
+                    total_containers += total
+                    running_containers += running
+                    text += f"{server_id}: {running}/{total}\n"
+                else:
+                    text += f"{server_id}: {get_text(user_id, 'common', 'error')}\n"
+            
+            text += f"\n{get_text(user_id, 'stats', 'total')}: {running_containers}/{total_containers}\n"
+        else:
+            text += f"{get_text(user_id, 'common', 'no_data')}\n"
 
         keyboard = [[InlineKeyboardButton(get_text(user_id, "common", "back"), callback_data="menu")]]
         reply_markup = InlineKeyboardMarkup(keyboard)
 
         await send_or_edit_message(update, text, reply_markup=reply_markup)
-        db.log_command(user_id, 'stats')
 
     except Exception as e:
         logger.error(f"Ошибка в stats_command: {e}")
+        error_text = f"{get_text(user_id, 'common', 'error')}: {str(e)}"
+        await send_or_edit_message(update, error_text)
+
+
+async def show_site_stats(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Показать детальную статистику по сайтам"""
+    user_id = get_user_id(update)
+
+    try:
+        sites = get_sites()
+        sites_results = await check_all_sites()
+
+        text = f"*{get_text(user_id, 'sites', 'title')}:*\n\n"
+
+        if sites_results:
+            for site, result in zip(sites, sites_results):
+                url = site.get('url', 'Unknown')
+                if result.get('success') and result.get('status') == 200:
+                    text += f"{url}\n"
+                    text += f"  {get_text(user_id, 'sites', 'up')}: {result.get('response_time', 0)}ms\n"
+                else:
+                    text += f"{url}\n"
+                    text += f"  {get_text(user_id, 'sites', 'down')}: {result.get('error', 'Unknown')}\n"
+        else:
+            text += get_text(user_id, 'common', 'no_data')
+
+        keyboard = [[InlineKeyboardButton(get_text(user_id, "common", "back"), callback_data="stats")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+
+        await send_or_edit_message(update, text, reply_markup=reply_markup)
+
+    except Exception as e:
+        logger.error(f"Ошибка в show_site_stats: {e}")
+        error_text = f"{get_text(user_id, 'common', 'error')}: {str(e)}"
+        await send_or_edit_message(update, error_text)
+
+
+async def show_docker_stats(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Показать детальную статистику по Docker"""
+    user_id = get_user_id(update)
+
+    try:
+        docker_results = check_all_docker_servers()
+
+        text = f"*{get_text(user_id, 'docker', 'containers')}:*\n\n"
+
+        if docker_results:
+            for server_id, result in docker_results.items():
+                text += f"*{server_id}:*\n"
+                
+                if result.get('status') == 'success':
+                    containers = result.get('containers', [])
+                    for container in containers:
+                        name = container.get('name', 'Unknown')
+                        running = container.get('running', False)
+                        critical = container.get('critical', False)
+                        
+                        if running:
+                            text += f"  {name}\n"
+                        else:
+                            text += f"  {name} ({get_text(user_id, 'docker', 'restarting')})\n"
+                        
+                        if critical and not running:
+                            text += f"    {get_text(user_id, 'common', 'warning')}\n"
+                else:
+                    text += f"  {get_text(user_id, 'common', 'error')}: {result.get('error', 'Unknown')}\n"
+                
+                text += "\n"
+        else:
+            text += get_text(user_id, 'common', 'no_data')
+
+        keyboard = [[InlineKeyboardButton(get_text(user_id, "common", "back"), callback_data="stats")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+
+        await send_or_edit_message(update, text, reply_markup=reply_markup)
+
+    except Exception as e:
+        logger.error(f"Ошибка в show_docker_stats: {e}")
         error_text = f"{get_text(user_id, 'common', 'error')}: {str(e)}"
         await send_or_edit_message(update, error_text)
