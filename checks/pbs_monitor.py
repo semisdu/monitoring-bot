@@ -15,7 +15,8 @@ from config.loader import (
     get_admin_chat_id,
     get_backup_jobs,
     get_server_config,
-    get_alert_config
+    get_alert_config,
+    get_pbs_server_ids
 )
 from utils.ssh import SSHClient
 
@@ -42,8 +43,8 @@ class PBSMonitor:
         self.disk_critical_threshold: int = alert_config.get('disk_critical_percent', 90)
         self.alert_cooldown_minutes: int = 30
         
-        self.pbs_servers = [s for s in get_server_config('pbs-backup')] if get_server_config('pbs-backup') else []
-        self.pbs_host: str = "pbs-backup"
+        self.pbs_servers: List[str] = get_pbs_server_ids()
+        self.pbs_host: Optional[str] = self.pbs_servers[0] if self.pbs_servers else None
 
     async def check_all_backups(self) -> None:
         """
@@ -51,6 +52,10 @@ class PBSMonitor:
         """
         if not self.backup_jobs:
             logger.info("📭 Немає налаштованих завдань бэкапів")
+            return
+
+        if not self.pbs_host:
+            logger.error("❌ Немає налаштованих PBS серверів")
             return
 
         logger.info(f"💾 Перевірка статусу бэкапів... Знайдено {len(self.backup_jobs)} завдань")

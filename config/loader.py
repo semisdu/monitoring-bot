@@ -162,6 +162,86 @@ def get_logging_config() -> Dict[str, Any]:
     return config.get('logging', {})
 
 
+# ==================== НОВАЯ СЕКЦИЯ: МОНИТОРИНГ ЛОГОВ КОНТЕЙНЕРОВ ====================
+
+def get_container_log_monitoring_config() -> Dict[str, Any]:
+    """
+    Получить конфигурацию мониторинга логов контейнеров
+    
+    Returns:
+        Настройки мониторинга логов контейнеров
+    """
+    config = load_config()
+    return config.get('container_log_monitoring', {})
+
+
+def is_container_log_monitoring_enabled() -> bool:
+    """Проверить, включён ли мониторинг логов контейнеров"""
+    return get_container_log_monitoring_config().get('enabled', False)
+
+
+def get_container_log_check_interval() -> int:
+    """Получить интервал проверки логов контейнеров в секундах"""
+    return get_container_log_monitoring_config().get('check_interval', 300)
+
+
+def get_container_log_alert_cooldown() -> int:
+    """Получить время охлаждения алертов по логам контейнеров в секундах"""
+    return get_container_log_monitoring_config().get('alert_cooldown', 1800)
+
+
+def get_container_log_default_lines() -> int:
+    """Получить количество строк лога по умолчанию"""
+    return get_container_log_monitoring_config().get('default_log_lines', 200)
+
+
+def get_container_patterns() -> Dict[str, Dict[str, Any]]:
+    """
+    Получить паттерны ошибок для разных типов контейнеров
+    
+    Returns:
+        Словарь {тип_контейнера: {name, patterns, critical?}}
+    """
+    return get_container_log_monitoring_config().get('patterns', {})
+
+
+def get_container_pattern(container_type: str) -> Optional[Dict[str, Any]]:
+    """
+    Получить паттерны для конкретного типа контейнера
+    
+    Args:
+        container_type: Тип контейнера (django_app, postgres, nginx, etc)
+    
+    Returns:
+        Конфигурация паттернов или None
+    """
+    patterns = get_container_patterns()
+    return patterns.get(container_type)
+
+
+def get_container_log_type(server_id: str, container_name: str) -> Optional[str]:
+    """
+    Получить тип лога для конкретного контейнера
+    
+    Args:
+        server_id: ID сервера
+        container_name: Имя контейнера
+    
+    Returns:
+        Тип лога (django_app, postgres, etc) или None
+    """
+    server = get_server_config(server_id)
+    if not server:
+        return None
+    
+    containers = server.get('containers', [])
+    for container in containers:
+        if container.get('name') == container_name:
+            return container.get('log_type')
+    
+    return None
+
+
 # ==================== СЕРВЕРЫ ====================
 
 def get_all_servers() -> List[Dict[str, Any]]:
@@ -285,6 +365,31 @@ def get_server_containers(server_id: str) -> List[Dict[str, Any]]:
     if server:
         return server.get('containers', [])
     return []
+
+
+def get_all_containers_with_servers() -> List[Dict[str, Any]]:
+    """
+    Получить список всех контейнеров с указанием сервера
+    
+    Returns:
+        Список словарей {server_id, container_name, container_config, log_type}
+    """
+    result = []
+    servers = get_all_servers()
+    
+    for server in servers:
+        server_id = server.get('id')
+        containers = server.get('containers', [])
+        
+        for container in containers:
+            result.append({
+                'server_id': server_id,
+                'container_name': container.get('name'),
+                'container_config': container,
+                'log_type': container.get('log_type')
+            })
+    
+    return result
 
 
 # ==================== ВИРТУАЛЬНЫЕ МАШИНЫ ====================

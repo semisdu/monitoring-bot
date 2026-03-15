@@ -5,21 +5,19 @@
 
 import logging
 import asyncio
-from datetime import datetime, time
+from datetime import datetime
 from typing import Dict, Any, List, Optional, Callable
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
-from apscheduler.triggers.interval import IntervalTrigger
 from telegram.ext import JobQueue
 
 from config.loader import get_schedule, get_features, get_admin_chat_id, load_config
 from bot.language import get_text
-from bot.handlers.common import get_user_id
 from bot.notifications import send_daily_report, send_alert
 from analytics.error_analyzer import get_current_problems, get_trends, record_error
 from checks.servers import get_server_checker
 from checks.log_monitor import check_logs
-from checks.container_monitor import check_containers
+from checks.container_log_monitor import check_container_logs
 from checks.pbs_monitor import check_pbs
 from checks.pve_monitor import check_pve
 from checks.docker import check_all_docker_servers
@@ -81,6 +79,15 @@ class MonitoringScheduler:
                 func=self._check_logs,
                 cron=self.schedule_config.get('log_check', '*/5 * * * *'),
                 description="Проверка логов"
+            )
+
+        # Проверка логов контейнеров (НОВАЯ ЗАДАЧА)
+        if self.config.get('container_log_monitoring', {}).get('enabled', True):
+            self._add_job(
+                name="container_log_check",
+                func=self._check_container_logs,
+                cron=self.schedule_config.get('log_check', '*/5 * * * *'),  # Можно отдельное расписание
+                description="Проверка логов контейнеров"
             )
 
         # Проверка PVE
@@ -230,6 +237,14 @@ class MonitoringScheduler:
             await check_logs()
         except Exception as e:
             logger.error(f"Ошибка при проверке логов: {e}")
+
+    async def _check_container_logs(self) -> None:
+        """Проверить логи контейнеров"""
+        logger.info("Запуск проверки логов контейнеров...")
+        try:
+            await check_container_logs()
+        except Exception as e:
+            logger.error(f"Ошибка при проверке логов контейнеров: {e}")
 
     async def _check_pve(self) -> None:
         """Проверить PVE"""

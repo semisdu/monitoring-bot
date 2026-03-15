@@ -23,7 +23,6 @@
     "critical": "🔥 Критичний"
   },
   "menu": {
-    "donate": "🙏 Сказати спасибі",
     "status": "📊 Статус",
     "docker": "🐳 Docker",
     "sites": "🌐 Сайти",
@@ -36,7 +35,8 @@
     "help": "❓ Допомога",
     "help_text": "📋 Довідка по командах бота",
     "reports": "📊 Звіти",
-    "trends": "📈 Тренди"
+    "trends": "📈 Тренди",
+    "donate": "🙏 Сказати спасибі"
   },
   "start": {
     "welcome": "👋 Привіт, {name}!",
@@ -273,5 +273,47 @@
     "generating": "⏳ Формую звіт...",
     "generated": "✅ Звіт сформовано",
     "failed": "❌ Помилка формування звіту"
+  },
+  "container_logs": {
+    "icons": {
+      "OperationalError": "🚨",
+      "DatabaseError": "🚨",
+      "InternalServerError": "🔥",
+      "does_not_exist": "❌",
+      "CRITICAL": "🔥",
+      "ERROR": "⚠️",
+      "Exception": "⚠️",
+      "Traceback": "📋",
+      "NoModule": "📦",
+      "ConnectionRefused": "🔌",
+      "Timeout": "⏰",
+      "FATAL": "🔥",
+      "PANIC": "💥",
+      "could_not_connect": "🔌",
+      "connection_refused": "🔌",
+      "no_pg_hba": "🔒",
+      "database_not_exists": "❌",
+      "emerg": "🔥",
+      "alert": "⚠️",
+      "crit": "⚠️",
+      "error": "⚠️",
+      "connect_failed": "🔌",
+      "open_failed": "📁",
+      "no_live_upstreams": "🌐",
+      "LostConnection": "🔌"
+    },
+    "titles": {
+      "django_app": "Django додаток",
+      "postgres": "PostgreSQL",
+      "nginx": "Nginx",
+      "celery": "Celery"
+    },
+    "messages": {
+      "error_found": "🚨 *Помилка в контейнері!*",
+      "container": "📦 Контейнер",
+      "server": "🖥 Сервер",
+      "type": "📝 Тип",
+      "error": "⚠️ Помилка"
+    }
   }
 }

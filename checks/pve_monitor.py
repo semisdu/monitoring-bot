@@ -42,7 +42,7 @@ class PVEMonitor:
         self.ram_critical_threshold: int = alert_config.get('memory_critical_percent', 95)
         
         self.pve_servers: List[str] = get_pve_server_ids()
-        self.pve_host: str = self.pve_servers[0] if self.pve_servers else "pve-host"
+        self.pve_host: Optional[str] = self.pve_servers[0] if self.pve_servers else None
         
         self.alert_cooldown_minutes: int = 30
 
@@ -52,6 +52,10 @@ class PVEMonitor:
         """
         if not self.vms:
             logger.info("📭 Немає налаштованих VM для моніторингу")
+            return
+
+        if not self.pve_host:
+            logger.error("❌ Немає налаштованих PVE серверів")
             return
 
         logger.info(f"🔍 Перевірка статусу {len(self.vms)} VM...")

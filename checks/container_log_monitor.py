@@ -11,144 +11,95 @@ from datetime import datetime, timedelta
 from typing import Dict, Any, List, Optional
 from telegram import Bot
 
-from config.settings import TELEGRAM_TOKEN, ADMIN_CHAT_ID
+from config.loader import (
+    get_telegram_token,
+    get_admin_chat_id,
+    get_container_log_monitoring_config,
+    get_container_patterns,
+    get_container_log_type,
+    get_all_containers_with_servers,
+    get_server_config
+)
 from utils.ssh import SSHClient
+from bot.language import get_text
 
 logger = logging.getLogger(__name__)
 
-# Константы
-ALERT_COOLDOWN_MINUTES = 30
-DEFAULT_LOG_LINES = 200  # Больше строк, так как ищем глубже
+# Константы из конфига
+config = get_container_log_monitoring_config()
+ALERT_COOLDOWN_MINUTES = config.get('alert_cooldown', 1800) / 60  # переводим в минуты
+DEFAULT_LOG_LINES = config.get('default_log_lines', 200)
 
 # Кэш для алертов
 _alert_cache: Dict[str, datetime] = {}
 _alert_cooldown: timedelta = timedelta(minutes=ALERT_COOLDOWN_MINUTES)
 
-# Конфигурация контейнеров и их паттернов ошибок
-CONTAINER_PATTERNS = {
-    # Django приложения
-    "course_app": {
-        "name": "Django App (курсы)",
-        "patterns": [
-            (r'OperationalError', "🚨 Помилка БД: {0}"),
-            (r'DatabaseError', "🚨 Помилка БД: {0}"),
-            (r'Internal Server Error', "🔥 500 помилка: {0}"),
-            (r'does not exist', "❌ Таблиця не існує: {0}"),
-            (r'CRITICAL', "🔥 Критична помилка: {0}"),
-            (r'ERROR', "⚠ Помилка: {0}"),
-            (r'Exception', "⚠ Виняток: {0}"),
-            (r'Traceback', "📋 Traceback знайдено"),
-            (r'No module named', "📦 Модуль не знайдено: {0}"),
-            (r'Connection refused', "🔌 Підключення відхилено"),
-            (r'Timeout', "⏰ Таймаут: {0}"),
-        ],
-        "critical": True
-    },
-    "competitions": {
-        "name": "Competitions App (конкурси)",
-        "patterns": [
-            (r'OperationalError', "🚨 Помилка БД: {0}"),
-            (r'DatabaseError', "🚨 Помилка БД: {0}"),
-            (r'Internal Server Error', "🔥 500 помилка: {0}"),
-            (r'ERROR', "⚠ Помилка: {0}"),
-            (r'Exception', "⚠ Виняток: {0}"),
-            (r'CRITICAL', "🔥 Критична помилка: {0}"),
-            (r'Traceback', "📋 Traceback знайдено"),
-        ],
-        "critical": True
-    },
-    
-    # Базы данных
-    "course_postgres": {
-        "name": "PostgreSQL (курси)",
-        "patterns": [
-            (r'FATAL', "🔥 Фатальна помилка: {0}"),
-            (r'PANIC', "💥 Паніка БД: {0}"),
-            (r'ERROR', "⚠ Помилка БД: {0}"),
-            (r'could not connect', "🔌 Не вдається підключитись: {0}"),
-            (r'connection refused', "🔌 Підключення відхилено"),
-            (r'no pg_hba.conf entry', "🔒 Помилка автентифікації"),
-            (r'database .* does not exist', "❌ БД не існує"),
-        ],
-        "critical": True
-    },
-    
-    # Nginx
-    "profcompetitions-nginx": {
-        "name": "Nginx (конкурси)",
-        "patterns": [
-            (r'\[emerg\]', "🔥 Критична помилка: {0}"),
-            (r'\[alert\]', "⚠ Тривога: {0}"),
-            (r'\[crit\]', "⚠ Критично: {0}"),
-            (r'\[error\]', "⚠ Помилка: {0}"),
-            (r'connect\(\) failed', "🔌 Помилка підключення до бекенду"),
-            (r'open\(\) .* failed', "📁 Помилка відкриття файлу: {0}"),
-            (r'no live upstreams', "🌐 Немає живих upstream серверів"),
-        ],
-        "critical": True
-    }
-}
-
-# Мапінг серверів до контейнерів
-SERVER_CONTAINERS = {
-    "vm301-courses": ["course_app", "course_postgres"],
-    "vm300-competitions": ["profcompetitions-nginx", "competitions"]
-}
-
 
 class ContainerLogMonitor:
     """Моніторинг логів Docker контейнерів"""
-    
+
     def __init__(self) -> None:
-        self.bot = Bot(token=TELEGRAM_TOKEN)
-    
+        self.bot = Bot(token=get_telegram_token())
+        self.patterns = get_container_patterns()
+
     async def check_all_containers_logs(self) -> None:
         """Перевірити логи всіх контейнерів"""
         logger.info("🔍 Запуск перевірки логів контейнерів...")
+
+        containers = get_all_containers_with_servers()
         
-        for server_id, containers in SERVER_CONTAINERS.items():
-            for container_name in containers:
-                try:
-                    await self._check_container_logs(server_id, container_name)
-                except Exception as e:
-                    logger.error(f"Помилка перевірки {container_name} на {server_id}: {e}")
-    
-    async def _check_container_logs(self, server_id: str, container_name: str) -> None:
+        for container in containers:
+            try:
+                await self._check_container_logs(
+                    container['server_id'],
+                    container['container_name'],
+                    container['log_type']
+                )
+            except Exception as e:
+                logger.error(f"Помилка перевірки {container['container_name']} на {container['server_id']}: {e}")
+
+    async def _check_container_logs(self, server_id: str, container_name: str, log_type: str) -> None:
         """
         Перевірити логи конкретного контейнера
-        
+
         Args:
-            server_id: ID сервера (vm301-courses, vm300-competitions)
+            server_id: ID сервера
             container_name: Ім'я контейнера
+            log_type: Тип контейнера (django_app, postgres, etc)
         """
         # Отримуємо конфіг для контейнера
-        container_config = CONTAINER_PATTERNS.get(container_name)
+        container_config = self.patterns.get(log_type)
         if not container_config:
-            logger.warning(f"Немає конфігурації для контейнера {container_name}")
+            logger.warning(f"Немає конфігурації для типу {log_type} (контейнер {container_name})")
             return
-        
+
         ssh = SSHClient(server_id)
-        
+
         # Команда для отримання логів контейнера
-        # 2>&1 перенаправляє stderr в stdout, щоб бачити всі помилки
         cmd = f"docker logs --tail {DEFAULT_LOG_LINES} {container_name} 2>&1"
-        
+
         try:
             result = ssh.execute_command(cmd)
-            
+
             if not result or "Error: No such container" in result:
                 logger.error(f"Контейнер {container_name} не знайдено на {server_id}")
                 return
-            
+
             log_lines = result.strip().split('\n')
             now = datetime.now()
-            
+
             for line in log_lines:
-                await self._check_line(server_id, container_name, container_config, line, now)
-                
+                await self._check_line(
+                    server_id,
+                    container_name,
+                    container_config,
+                    line,
+                    now
+                )
+
         except Exception as e:
             logger.error(f"SSH помилка при отриманні логів {container_name}: {e}")
-    
+
     async def _check_line(
         self,
         server_id: str,
@@ -158,47 +109,101 @@ class ContainerLogMonitor:
         now: datetime
     ) -> None:
         """Перевірити рядок логу на наявність помилок"""
+
+        patterns = container_config.get('patterns', [])
         
-        for pattern, template in container_config["patterns"]:
+        for pattern, template in patterns:
             match = re.search(pattern, line, re.IGNORECASE)
             if not match:
                 continue
-            
-            # Унікальний ключ для кешу (сервер+контейнер+помилка)
+
+            # Унікальний ключ для кешу
             error_key = f"{server_id}:{container_name}:{pattern}"
-            
+
             # Перевіряємо чи не було такого алерту нещодавно
             if error_key in _alert_cache:
                 last_alert = _alert_cache[error_key]
                 if now - last_alert < _alert_cooldown:
                     continue
-            
+
+            # Отримуємо іконку для цього типу помилки
+            icon_key = self._get_icon_key(pattern)
+            icon = get_text(None, 'container_logs', 'icons', icon_key)
+
             # Формуємо повідомлення
             error_text = match.group(0) if match.groups() else pattern
             message = template.format(error_text)
-            
+
             # Обрізаємо довгі рядки
             short_line = line[:200] + "..." if len(line) > 200 else line
-            
+
+            # Отримуємо назву сервера для краси
+            server_config = get_server_config(server_id)
+            server_name = server_config.get('name', server_id) if server_config else server_id
+
             alert_text = (
-                f"🚨 *Помилка в контейнері!*\n"
-                f"📦 Контейнер: `{container_name}`\n"
-                f"🖥 Сервер: {server_id}\n"
-                f"📝 Тип: {container_config['name']}\n"
-                f"⚠ Помилка: {message}\n"
+                f"{get_text(None, 'container_logs', 'messages', 'error_found')}\n"
+                f"{get_text(None, 'container_logs', 'messages', 'container')}: `{container_name}`\n"
+                f"{get_text(None, 'container_logs', 'messages', 'server')}: {server_name}\n"
+                f"{get_text(None, 'container_logs', 'messages', 'type')}: {container_config.get('name', log_type)}\n"
+                f"{get_text(None, 'container_logs', 'messages', 'error')}: {icon} {message}\n"
                 f"```\n{short_line}\n```"
             )
-            
+
             await self._send_alert(alert_text)
             _alert_cache[error_key] = now
             logger.info(f"⚠ Знайдено помилку в {container_name}: {message}")
             break  # Тільки один алерт на рядок
-    
+
+    def _get_icon_key(self, pattern: str) -> str:
+        """
+        Визначає ключ для іконки на основі паттерна
+
+        Args:
+            pattern: Regex паттерн
+
+        Returns:
+            Ключ для отримання іконки з language файлу
+        """
+        pattern_map = {
+            r'OperationalError': 'OperationalError',
+            r'DatabaseError': 'DatabaseError',
+            r'Internal Server Error': 'InternalServerError',
+            r'does not exist': 'does_not_exist',
+            r'CRITICAL': 'CRITICAL',
+            r'ERROR': 'ERROR',
+            r'Exception': 'Exception',
+            r'Traceback': 'Traceback',
+            r'No module named': 'NoModule',
+            r'Connection refused': 'ConnectionRefused',
+            r'Timeout': 'Timeout',
+            r'FATAL': 'FATAL',
+            r'PANIC': 'PANIC',
+            r'could not connect': 'could_not_connect',
+            r'connection refused': 'connection_refused',
+            r'no pg_hba.conf entry': 'no_pg_hba',
+            r'database .* does not exist': 'database_not_exists',
+            r'\[emerg\]': 'emerg',
+            r'\[alert\]': 'alert',
+            r'\[crit\]': 'crit',
+            r'\[error\]': 'error',
+            r'connect\(\) failed': 'connect_failed',
+            r'open\(\) .* failed': 'open_failed',
+            r'no live upstreams': 'no_live_upstreams',
+            r'Lost connection': 'LostConnection',
+        }
+        
+        for p, key in pattern_map.items():
+            if re.search(p, pattern, re.IGNORECASE):
+                return key
+        
+        return 'ERROR'  # По умолчанию
+
     async def _send_alert(self, message: str) -> None:
         """Відправити алерт"""
         try:
             await self.bot.send_message(
-                chat_id=ADMIN_CHAT_ID,
+                chat_id=get_admin_chat_id(),
                 text=message,
                 parse_mode='Markdown'
             )

@@ -1,41 +1,43 @@
 # Monitoring Bot Configuration Example
-# Copy to config.yml and fill with your data
+# Скопируйте в config.yml и заполните своими данными
 
 telegram:
-  token: "YOUR_BOT_TOKEN_HERE"  # Get from @BotFather
-  admin_chat_id: 123456789       # Your Telegram ID
+  token: "YOUR_BOT_TOKEN_HERE"  # Получить у @BotFather
+  admin_chat_id: 123456789       # Ваш Telegram ID
 
 paths:
   base_dir: "/opt/monitoring-bot"
   logs: "logs"
   database: "database"
-  ssh_keys: "/opt/monitoring-bot/keys"  # Directory where SSH keys are stored (can be empty)
+  ssh_keys: "/opt/monitoring-bot/keys"  # безопасное место для SSH ключей
 
 # ==================== СЕРВЕРЫ ====================
 servers:
-  # Example server with Docker
+  # Пример сервера с Docker
   - id: "example-server"
     name: "Example Server"
     host: "192.168.1.100"
-    user: "username"        # SSH user on the server
+    user: "username"        # Пользователь SSH на сервере
     port: 22
-    ssh_key: "id_ed25519"   # Only filename, bot will find it in ~/.ssh/
+    ssh_key: "YOUR_KEY_NAME"   # только имя файла, без пути!
     docker_enabled: true
     containers:
       - name: "postgres"
         service_name: "postgres"
         critical: true
+        log_type: "postgres"  # тип для паттернов ошибок
       - name: "app"
         service_name: "web"
         critical: true
+        log_type: "django_app"  # тип для паттернов ошибок
 
-  # Example PVE server
+  # Пример PVE сервера
   - id: "pve-example"
     name: "PVE Hypervisor"
     host: "192.168.1.99"
     user: "username"
     port: 22
-    ssh_key: "id_ed25519"
+    ssh_key: "YOUR_KEY_NAME"
     type: "pve"
     api_enabled: true
     api_host: "192.168.1.99"
@@ -44,13 +46,13 @@ servers:
     api_verify_ssl: false
     vms: [100, 101]
 
-  # Example PBS server
+  # Пример PBS сервера
   - id: "pbs-example"
     name: "Backup Server"
     host: "192.168.1.37"
     user: "root"
     port: 22
-    ssh_key: "id_ed25519"
+    ssh_key: "YOUR_KEY_NAME"
     type: "pbs"
     api_enabled: true
     api_host: "192.168.1.37"
@@ -83,7 +85,7 @@ virtual_machines:
     name: "Example VM"
     vmid: 100
     server_id: "pve-example"
-    description: "Example virtual machine"
+    description: "Пример виртуальной машины"
     critical: true
     monitoring:
       status: true
@@ -100,7 +102,7 @@ backup_jobs:
     retention_days: 7
     vms: [100, 101]
 
-# ==================== МОНИТОРИНГ ЛОГОВ ====================
+# ==================== МОНИТОРИНГ ЛОГОВ (ОБЫЧНЫХ) ====================
 log_monitoring:
   enabled: false
   check_interval: 300
@@ -121,6 +123,66 @@ log_monitoring:
     example-server:
       - "/var/log/nginx/access.log"
       - "/var/log/nginx/error.log"
+
+# ==================== НОВАЯ СЕКЦИЯ: МОНИТОРИНГ ЛОГОВ КОНТЕЙНЕРОВ ====================
+container_log_monitoring:
+  enabled: true                      # Включить мониторинг
+  check_interval: 300                 # Проверка каждые 5 минут
+  alert_cooldown: 1800                 # Не спамить об одной ошибке чаще 30 минут
+  default_log_lines: 200               # Сколько строк лога читать
+  
+  # Паттерны ошибок для разных типов контейнеров
+  patterns:
+    # Django приложения
+    django_app:
+      name: "Django App"
+      patterns:
+        - ["OperationalError", "🚨 Ошибка БД: {0}"]
+        - ["DatabaseError", "🚨 Ошибка БД: {0}"]
+        - ["Internal Server Error", "🔥 500 ошибка: {0}"]
+        - ["does not exist", "❌ Таблица не существует: {0}"]
+        - ["CRITICAL", "🔥 Критическая ошибка: {0}"]
+        - ["ERROR", "⚠ Ошибка: {0}"]
+        - ["Exception", "⚠ Исключение: {0}"]
+        - ["Traceback", "📋 Traceback найден"]
+        - ["No module named", "📦 Модуль не найден: {0}"]
+        - ["Connection refused", "🔌 Подключение отклонено"]
+        - ["Timeout", "⏰ Таймаут: {0}"]
+    
+    # PostgreSQL
+    postgres:
+      name: "PostgreSQL"
+      patterns:
+        - ["FATAL", "🔥 Фатальная ошибка: {0}"]
+        - ["PANIC", "💥 Паника БД: {0}"]
+        - ["ERROR", "⚠ Ошибка БД: {0}"]
+        - ["could not connect", "🔌 Не удаётся подключиться: {0}"]
+        - ["connection refused", "🔌 Подключение отклонено"]
+        - ["no pg_hba.conf entry", "🔒 Ошибка аутентификации"]
+        - ["database .* does not exist", "❌ БД не существует"]
+    
+    # Nginx
+    nginx:
+      name: "Nginx"
+      patterns:
+        - ["[emerg]", "🔥 Критическая ошибка: {0}"]
+        - ["[alert]", "⚠ Тревога: {0}"]
+        - ["[crit]", "⚠ Критично: {0}"]
+        - ["[error]", "⚠ Ошибка: {0}"]
+        - ["connect\\(\\) failed", "🔌 Ошибка подключения к бэкенду"]
+        - ["open\\(\\) .* failed", "📁 Ошибка открытия файла: {0}"]
+        - ["no live upstreams", "🌐 Нет живых upstream серверов"]
+    
+    # Celery
+    celery:
+      name: "Celery"
+      patterns:
+        - ["ERROR", "⚠ Ошибка: {0}"]
+        - ["CRITICAL", "🔥 Критическая ошибка: {0}"]
+        - ["Exception", "⚠ Исключение: {0}"]
+        - ["Traceback", "📋 Traceback найден"]
+        - ["Lost connection", "🔌 Потеряно соединение"]
+        - ["Timeout", "⏰ Таймаут: {0}"]
 
 # ==================== РАСПИСАНИЕ ====================
 schedule:
