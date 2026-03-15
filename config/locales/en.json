@@ -23,6 +23,7 @@
     "critical": "🔥 Critical"
   },
   "menu": {
+    "donate": "🙏 Say thanks",
     "status": "📊 Status",
     "docker": "🐳 Docker",
     "sites": "🌐 Sites",

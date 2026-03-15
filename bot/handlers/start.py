@@ -52,7 +52,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         ],
         [
             InlineKeyboardButton(get_text(user_id, "menu", "language"), callback_data="language"),
-            InlineKeyboardButton("🙏 Сказати спасибі", callback_data="donate")
+            InlineKeyboardButton(get_text(user_id, "menu", "donate"), callback_data="donate")
         ]
     ]
     
