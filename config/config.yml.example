@@ -9,7 +9,7 @@ paths:
   base_dir: "/opt/monitoring-bot"
   logs: "logs"
   database: "database"
-  ssh_keys: "~/.ssh"  # Directory where SSH keys are stored (can be empty)
+  ssh_keys: "/opt/monitoring-bot/keys"  # Directory where SSH keys are stored (can be empty)
 
 # ==================== СЕРВЕРЫ ====================
 servers:

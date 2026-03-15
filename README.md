@@ -100,45 +100,55 @@
 
 ### 1. Создайте свою пару SSH-ключей (если ещё нет)
 
-`ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519_monitoring`
+`ssh-keygen -t ed25519 -f ~/.ssh/YOUR_KEY_NAME`
 
-> Можно использовать любое имя файла, главное - указать его в конфиге.
+> Замените `YOUR_KEY_NAME` на любое удобное вам имя, например: `id_monitoring`, `monitoring_key`, `my_server_key` и т.д.
 
 ### 2. Скопируйте публичный ключ на все сервера, которые хотите мониторить
 
 Для каждого сервера выполните:
 
-`ssh-copy-id -i ~/.ssh/id_ed25519_monitoring.pub username@server-ip`
+`ssh-copy-id -i ~/.ssh/YOUR_KEY_NAME.pub username@server-ip`
 
 Вас попросят ввести пароль пользователя на сервере. После этого ключ будет добавлен в `~/.ssh/authorized_keys` на удалённом сервере.
 
-### 3. Укажите имя ключа в конфиге
+### 3. Храните ключи в безопасном месте (не в /home/)
 
-В файле `config/config.yml` для каждого сервера укажите **только имя файла** ключа:
+Создайте отдельную директорию для ключей бота (рекомендуется):
+
+`sudo mkdir -p /opt/monitoring-bot/keys`
+`sudo chown $USER:$USER /opt/monitoring-bot/keys`
+`chmod 700 /opt/monitoring-bot/keys`
+
+Перенесите ключи в безопасное место:
+
+`cp ~/.ssh/YOUR_KEY_NAME /opt/monitoring-bot/keys/`
+`cp ~/.ssh/YOUR_KEY_NAME.pub /opt/monitoring-bot/keys/`
+
+Установите правильные права доступа:
+
+`chmod 600 /opt/monitoring-bot/keys/YOUR_KEY_NAME`      # приватный ключ - только владелец
+`chmod 644 /opt/monitoring-bot/keys/YOUR_KEY_NAME.pub`  # публичный ключ - можно читать всем
+
+### 4. Настройте бота
+
+В `config/config.yml` укажите директорию с ключами:
+
+`paths:`
+`  ssh_keys: "/opt/monitoring-bot/keys"  # директория с вашими ключами`
+
+Для каждого сервера укажите **только имя файла** ключа (без пути):
 
 `servers:`
 `  - id: "my-server"`
 `    user: "username"`
-`    ssh_key: "id_ed25519_monitoring"  # только имя файла, без пути!`
-
-### 4. Укажите директорию с ключами (опционально)
-
-В секции `paths` можно указать, где искать ключи:
-
-`paths:`
-`  ssh_keys: "~/.ssh"  # по умолчанию ищет в ~/.ssh/`
-
-Если не указывать, бот сам найдёт ключ в:
-- Указанной в конфиге директории
-- Стандартной `~/.ssh/`
-- Текущей директории проекта
-- Папке `keys/` в проекте
+`    ssh_key: "YOUR_KEY_NAME"  # только имя файла, без пути!`
 
 ### 5. Проверьте подключение
 
 Убедитесь, что бот сможет подключиться:
 
-`ssh -i ~/.ssh/id_ed25519_monitoring username@server-ip`
+`ssh -i /opt/monitoring-bot/keys/YOUR_KEY_NAME username@server-ip`
 
 Если вы зашли без запроса пароля — всё готово к запуску бота! 🚀
 
@@ -153,7 +163,7 @@
 `    name: "Мой сервер"      # Отображаемое имя`
 `    host: "192.168.1.100"   # IP или домен`
 `    user: "username"        # Пользователь SSH`
-`    ssh_key: "id_ed25519"   # Имя ключа (бот найдёт сам)`
+`    ssh_key: "YOUR_KEY_NAME"   # Имя ключа (бот найдёт сам)`
 `    docker_enabled: true    # Есть Docker?`
 `    containers:              # Список контейнеров`
 `      - name: "postgres"`
