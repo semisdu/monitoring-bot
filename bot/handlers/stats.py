@@ -4,7 +4,6 @@
 """
 
 import logging
-from datetime import datetime, timedelta
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 
@@ -26,7 +25,7 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
         text = f"*{get_text(user_id, 'stats', 'title')}:*\n\n"
 
-        # Общая информация
+        # ===== ОБЩАЯ ИНФОРМАЦИЯ =====
         servers = get_all_servers()
         sites = get_sites()
         docker_servers = get_docker_server_ids()
@@ -36,46 +35,65 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         text += f"{get_text(user_id, 'sites', 'title')}: {len(sites)}\n"
         text += f"{get_text(user_id, 'docker', 'containers')}: {len(docker_servers)} {get_text(user_id, 'docker', 'status')}\n\n"
 
-        # Статистика по сайтам
+        # ===== СТАТИСТИКА ПО САЙТАМ =====
         text += f"*{get_text(user_id, 'sites', 'title')}:*\n"
         sites_results = await check_all_sites()
-        
+
         if sites_results:
-            successful = sum(1 for s in sites_results if s.get('success') and s.get('status') == 200)
+            successful = sum(1 for s in sites_results if s.get('status') == 'up')
             total = len(sites_results)
-            
+
             for site in sites_results[:5]:
                 url = site.get('url', 'Unknown')
-                if site.get('success') and site.get('status') == 200:
-                    text += f"{url} - {get_text(user_id, 'sites', 'up')}\n"
+                status = site.get('status', 'down')
+                response_time = site.get('response_time', 0)
+
+                if status == 'up':
+                    text += f"{url} - {get_text(user_id, 'sites', 'up')} ({response_time}ms)\n"
                 else:
-                    text += f"{url} - {get_text(user_id, 'sites', 'down')}\n"
-            
+                    error = site.get('error', 'Unknown error')
+                    text += f"{url} - {get_text(user_id, 'sites', 'down')}: {error}\n"
+
             if total > 5:
                 text += f"... {get_text(user_id, 'common', 'and_more')} {total - 5}\n"
-            
+
             text += f"\n{get_text(user_id, 'stats', 'total')}: {successful}/{total}\n\n"
         else:
             text += f"{get_text(user_id, 'common', 'no_data')}\n\n"
 
-        # Статистика по Docker
+        # ===== СТАТИСТИКА ПО DOCKER =====
         text += f"*{get_text(user_id, 'docker', 'containers')}:*\n"
         docker_results = check_all_docker_servers()
-        
+
         if docker_results:
             total_containers = 0
             running_containers = 0
-            
+
             for server_id, result in docker_results.items():
                 if result.get('status') == 'success':
                     total = result.get('total_containers', 0)
                     running = result.get('running_containers', 0)
                     total_containers += total
                     running_containers += running
-                    text += f"{server_id}: {running}/{total}\n"
+
+                    if running == total:
+                        text += f"{server_id}: {running}/{total}\n"
+                    else:
+                        text += f"{server_id}: {running}/{total}\n"
+                        containers = result.get('containers', [])
+                        problem_containers = [c for c in containers if not c.get('running')]
+                        for c in problem_containers[:2]:
+                            name = c.get('name', 'Unknown')
+                            critical = c.get('critical', False)
+                            if critical:
+                                text += f"  • {name} ({get_text(user_id, 'common', 'warning')})\n"
+                            else:
+                                text += f"  • {name}\n"
+                        if len(problem_containers) > 2:
+                            text += f"  ... {get_text(user_id, 'common', 'and_more')} {len(problem_containers) - 2}\n"
                 else:
                     text += f"{server_id}: {get_text(user_id, 'common', 'error')}\n"
-            
+
             text += f"\n{get_text(user_id, 'stats', 'total')}: {running_containers}/{total_containers}\n"
         else:
             text += f"{get_text(user_id, 'common', 'no_data')}\n"
@@ -99,17 +117,27 @@ async def show_site_stats(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         sites = get_sites()
         sites_results = await check_all_sites()
 
-        text = f"*{get_text(user_id, 'sites', 'title')}:*\n\n"
+        text = f"*{get_text(user_id, 'sites', 'title')} ({get_text(user_id, 'stats', 'detailed')}):*\n\n"
 
-        if sites_results:
+        if sites_results and len(sites_results) == len(sites):
             for site, result in zip(sites, sites_results):
                 url = site.get('url', 'Unknown')
-                if result.get('success') and result.get('status') == 200:
-                    text += f"{url}\n"
+                name = site.get('name', url)
+                critical = site.get('critical', False)
+
+                text += f"*{name}*\n"
+                text += f"URL: {url}\n"
+
+                if result.get('status') == 'up':
                     text += f"  {get_text(user_id, 'sites', 'up')}: {result.get('response_time', 0)}ms\n"
+                    if result.get('status_code'):
+                        text += f"  HTTP {result.get('status_code')}\n"
                 else:
-                    text += f"{url}\n"
                     text += f"  {get_text(user_id, 'sites', 'down')}: {result.get('error', 'Unknown')}\n"
+
+                if critical:
+                    text += f"  {get_text(user_id, 'common', 'warning')}\n"
+                text += "\n"
         else:
             text += get_text(user_id, 'common', 'no_data')
 
@@ -131,29 +159,34 @@ async def show_docker_stats(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     try:
         docker_results = check_all_docker_servers()
 
-        text = f"*{get_text(user_id, 'docker', 'containers')}:*\n\n"
+        text = f"*{get_text(user_id, 'docker', 'containers')} ({get_text(user_id, 'stats', 'detailed')}):*\n\n"
 
         if docker_results:
             for server_id, result in docker_results.items():
                 text += f"*{server_id}:*\n"
-                
+
                 if result.get('status') == 'success':
                     containers = result.get('containers', [])
+                    running = result.get('running_containers', 0)
+                    total = result.get('total_containers', 0)
+
+                    text += f"  {get_text(user_id, 'docker', 'running')}: {running}/{total}\n"
+
                     for container in containers:
                         name = container.get('name', 'Unknown')
                         running = container.get('running', False)
                         critical = container.get('critical', False)
-                        
+                        status = container.get('status', 'unknown')
+
                         if running:
                             text += f"  {name}\n"
                         else:
-                            text += f"  {name} ({get_text(user_id, 'docker', 'restarting')})\n"
-                        
-                        if critical and not running:
-                            text += f"    {get_text(user_id, 'common', 'warning')}\n"
+                            text += f"  {name} ({status})\n"
+                            if critical:
+                                text += f"    {get_text(user_id, 'common', 'warning')}\n"
                 else:
                     text += f"  {get_text(user_id, 'common', 'error')}: {result.get('error', 'Unknown')}\n"
-                
+
                 text += "\n"
         else:
             text += get_text(user_id, 'common', 'no_data')
