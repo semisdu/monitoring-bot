@@ -12,7 +12,15 @@
     "restart_all": "Restart all",
     "success": "✅ Success",
     "warning": "⚠️ Warning",
-    "info": "ℹ️ Info"
+    "info": "ℹ️ Info",
+    "total": "📊 Total",
+    "details": "🔍 Details",
+    "clear": "🧹 Clear",
+    "no_data": "📭 No data",
+    "no_servers": "❌ No servers configured",
+    "no_vms": "❌ No virtual machines configured",
+    "no_containers": "❌ No containers",
+    "critical": "🔥 Critical"
   },
   "menu": {
     "status": "📊 Status",
@@ -25,12 +33,14 @@
     "logs": "📋 Logs",
     "language": "🌐 Language",
     "help": "❓ Help",
-    "help_text": "📋 Bot commands help"
+    "help_text": "📋 Bot commands help",
+    "reports": "📊 Reports",
+    "trends": "📈 Trends"
   },
   "start": {
     "welcome": "👋 Hello, {name}!",
     "description": "🤖 I'm Monitoring Bot, infrastructure monitoring system.",
-    "features": "📊 Available features:\n• Server status check\n• Docker containers monitoring\n• Sites availability check\n• Real-time logs analysis\n• Infrastructure management",
+    "features": "📊 Available features:\n• Server status check\n• Docker containers monitoring\n• Sites availability check\n• Real-time logs analysis\n• Infrastructure management\n• Smart error analytics",
     "help_hint": "📋 Use /help for commands list\n🔍 Or choose action from menu below:"
   },
   "help": {
@@ -40,7 +50,11 @@
     "sites": "🌐 **Sites checks:**",
     "docker": "🐳 **Docker management:**",
     "monitoring": "📊 **Monitoring and logs:**",
-    "infra": "🏗 **Infrastructure:**"
+    "infra": "🏗 **Infrastructure:**",
+    "analytics": "📈 **Analytics & Reports:**",
+    "report": "📊 Show daily report",
+    "trends": "📈 Show error trends",
+    "alert_test": "🔔 Test notification"
   },
   "docker": {
     "status": "🐳 Docker Status",
@@ -68,7 +82,8 @@
     "up": "✅ Up",
     "down": "❌ Down",
     "response_time": "⏱ Response time",
-    "http_code": "📟 HTTP code"
+    "http_code": "📟 HTTP code",
+    "external": "🌍 External site"
   },
   "status": {
     "title": "📊 Servers status",
@@ -76,8 +91,6 @@
     "app_servers": "🚀 Application servers",
     "virtual_machines": "💻 Virtual machines",
     "select_type": "📌 Select server type to check",
-    "no_servers": "❌ No configured servers",
-    "no_vms": "❌ No configured virtual machines",
     "all_servers": "📡 All servers",
     "checking_all": "🔍 Checking all servers...",
     "checking_server": "🔍 Checking server {server}...",
@@ -102,7 +115,8 @@
     "created_at": "⏰ Created",
     "message": "📝 Message",
     "clear": "🧹 Clear",
-    "clear_all": "🧹 Clear all"
+    "clear_all": "🧹 Clear all",
+    "details": "🔍 Alert details"
   },
   "stats": {
     "title": "📊 System statistics",
@@ -113,7 +127,8 @@
     "popular": "🔥 Popular commands",
     "today": "📅 Today",
     "week": "📅 This week",
-    "month": "📅 This month"
+    "month": "📅 This month",
+    "detailed": "detailed"
   },
   "logs": {
     "title": "📋 System logs",
@@ -182,5 +197,107 @@
     "ru": "🇷🇺 Русский",
     "en": "🇬🇧 English",
     "uk": "🇺🇦 Українська"
+  },
+  "analytics": {
+    "title": "📊 Error analytics",
+    "daily_report": {
+      "title": "📊 DAILY REPORT",
+      "date": "📅 Date",
+      "summary": "📈 SUMMARY STATISTICS",
+      "total_errors": "Total errors",
+      "unique_problems": "Unique problems",
+      "resolved": "Resolved",
+      "active": "🔴 ACTIVE PROBLEMS",
+      "by_type": "📊 BY TYPE",
+      "trends": "📈 WEEKLY TRENDS"
+    },
+    "error_types": {
+      "docker_down": "Container down",
+      "site_down": "Site down",
+      "high_cpu": "High CPU load",
+      "disk_full": "Disk space low",
+      "backup_old": "Backup outdated",
+      "connection_error": "Connection error",
+      "test_error": "Test notification"
+    },
+    "severity": {
+      "critical": "🚨 Critical",
+      "warning": "⚠️ Warning",
+      "info": "ℹ️ Info"
+    },
+    "recommendations": {
+      "title": "💡 Recommendations",
+      "docker_down": [
+        "Restart container {container}",
+        "Check container logs for errors",
+        "Increase memory limits if OOM issue"
+      ],
+      "site_down": [
+        "Check site {url} manually",
+        "Check NGINX logs on server",
+        "Check application Docker containers status"
+      ],
+      "high_cpu": [
+        "Check processes on server {server} (top/htop)",
+        "Check for memory leaks in applications",
+        "Consider increasing resources"
+      ],
+      "disk_full": [
+        "Clean up disk on server {server} (old logs, backups)",
+        "Check which directories use most space",
+        "Configure log rotation"
+      ],
+      "backup_old": [
+        "Check backup status on server {server}",
+        "Run backup manually",
+        "Check storage free space"
+      ],
+      "connection_error": [
+        "Check network connection to {server}",
+        "Check if SSH is running on server",
+        "Check firewall and port availability"
+      ]
+    }
+  },
+  "notifications": {
+    "instant": {
+      "title": "🔔 Instant notification",
+      "server": "🖥 Server",
+      "container": "📦 Container",
+      "site": "🌐 Site",
+      "time": "⏰ Time",
+      "details": "📝 Details"
+    },
+    "daily": {
+      "title": "📊 Daily report",
+      "summary": "📈 Summary",
+      "details": "🔍 Details",
+      "clear": "🧹 Clear"
+    },
+    "test": {
+      "success": "✅ Test notification sent",
+      "fail": "❌ Failed to send test notification"
+    }
+  },
+  "trends": {
+    "title": "📈 Error trends",
+    "period": "Period",
+    "day": "day",
+    "week": "week",
+    "month": "month",
+    "total": "Total",
+    "unique": "Unique",
+    "resolved": "Resolved",
+    "by_type": "By type",
+    "by_day": "By day"
+  },
+  "report": {
+    "title": "📊 Report",
+    "now": "🔍 Generate now",
+    "config": "⚙️ Report settings",
+    "test": "🔔 Test notification",
+    "generating": "⏳ Generating report...",
+    "generated": "✅ Report generated",
+    "failed": "❌ Failed to generate report"
   }
 }

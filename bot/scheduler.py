@@ -5,15 +5,18 @@
 
 import logging
 import asyncio
-from datetime import datetime
+from datetime import datetime, time
 from typing import Dict, Any, List, Optional, Callable
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
+from apscheduler.triggers.interval import IntervalTrigger
 from telegram.ext import JobQueue
 
-from config.loader import get_schedule, get_features, get_admin_chat_id
+from config.loader import get_schedule, get_features, get_admin_chat_id, load_config
 from bot.language import get_text
 from bot.handlers.common import get_user_id
+from bot.notifications import send_daily_report, send_alert
+from analytics.error_analyzer import get_current_problems, get_trends, record_error
 from checks.servers import get_server_checker
 from checks.log_monitor import check_logs
 from checks.container_monitor import check_containers
@@ -39,8 +42,10 @@ class MonitoringScheduler:
         self.job_queue: Optional[JobQueue] = application.job_queue
         self.scheduler = AsyncIOScheduler()
         self.jobs: Dict[str, Dict[str, Any]] = {}
-        self.schedule_config = get_schedule()
-        self.features = get_features()
+        self.config = load_config()
+        self.schedule_config = self.config.get('schedule', {})
+        self.features = self.config.get('features', {})
+        self.notifications_config = self.config.get('notifications', {})
         self.admin_chat_id = get_admin_chat_id()
 
     def setup(self) -> None:
@@ -105,13 +110,32 @@ class MonitoringScheduler:
                 description="Проверка сайтов"
             )
 
-        # Ежедневный отчет
-        if self.features.get('enable_daily_reports', True):
+        # Ежедневный отчёт (в 9:00 утра)
+        if self.notifications_config.get('daily_report', {}).get('enabled', True):
+            report_time = self.notifications_config.get('daily_report', {}).get('time', '09:00')
+            hour, minute = map(int, report_time.split(':'))
             self._add_job(
                 name="daily_report",
                 func=self._send_daily_report,
-                cron=self.schedule_config.get('daily_report', '0 9 * * *'),
-                description="Ежедневный отчет"
+                cron=f"{minute} {hour} * * *",
+                description="Ежедневный отчёт"
+            )
+
+        # Аналитика трендов (каждые 6 часов)
+        self._add_job(
+            name="trends_analysis",
+            func=self._analyze_trends,
+            cron="0 */6 * * *",
+            description="Анализ трендов ошибок"
+        )
+
+        # Очистка старых данных (каждую неделю)
+        if self.features.get('enable_cleanup', True):
+            self._add_job(
+                name="cleanup_old_data",
+                func=self._cleanup_old_data,
+                cron=self.schedule_config.get('cleanup', '0 2 * * 1'),
+                description="Очистка старых данных"
             )
 
         logger.info(f"Настроено {len(self.jobs)} запланированных задач")
@@ -144,7 +168,20 @@ class MonitoringScheduler:
         logger.info("Запуск автоматической проверки статуса серверов...")
         try:
             checker = get_server_checker()
-            # Здесь логика проверки серверов
+            servers = self.config.get('servers', [])
+            
+            for server in servers:
+                server_id = server.get('id')
+                if server_id:
+                    status = checker.check_remote_server(server_id)
+                    if status.get('status') != 'online':
+                        # Логируем проблему в аналитику
+                        record_error({
+                            'error_type': 'connection_error',
+                            'server_id': server_id,
+                            'message': f"Сервер {server_id} недоступен",
+                            'severity': 'critical' if server.get('critical') else 'warning'
+                        })
         except Exception as e:
             logger.error(f"Ошибка при автоматической проверке статуса: {e}")
 
@@ -162,10 +199,27 @@ class MonitoringScheduler:
                     
                     if critical_failed > 0:
                         logger.warning(f"Docker на {server_id}: {running}/{total} работают ({critical_failed} критических не работают)")
+                        
+                        # Логируем каждый упавший критический контейнер
+                        for container in containers:
+                            if not container.get('running') and container.get('critical'):
+                                record_error({
+                                    'error_type': 'docker_down',
+                                    'server_id': server_id,
+                                    'container_name': container.get('name'),
+                                    'message': f"Критический контейнер {container.get('name')} остановлен",
+                                    'severity': 'critical'
+                                })
                     else:
                         logger.info(f"Docker на {server_id}: {running}/{total} работают")
                 else:
                     logger.error(f"Ошибка проверки Docker на {server_id}: {result.get('error', 'Unknown')}")
+                    record_error({
+                        'error_type': 'connection_error',
+                        'server_id': server_id,
+                        'message': f"Ошибка проверки Docker: {result.get('error', 'Unknown')}",
+                        'severity': 'warning'
+                    })
         except Exception as e:
             logger.error(f"Ошибка при автоматической проверке Docker: {e}")
 
@@ -197,54 +251,72 @@ class MonitoringScheduler:
         """Проверить сайты"""
         logger.info("Проверка сайтов...")
         try:
-            await check_all_sites()
+            sites = self.config.get('sites', [])
+            results = await check_all_sites()
+            
+            for site, result in zip(sites, results):
+                if result.get('status') != 'up':
+                    # Логируем проблему
+                    record_error({
+                        'error_type': 'site_down',
+                        'site_url': site.get('url'),
+                        'server_id': site.get('server_id'),
+                        'message': f"Сайт {site.get('name')} недоступен: {result.get('error', 'Unknown')}",
+                        'severity': 'critical' if site.get('critical') else 'warning',
+                        'status_code': result.get('status_code')
+                    })
         except Exception as e:
             logger.error(f"Ошибка проверки сайтов: {e}")
 
     async def _send_daily_report(self) -> None:
-        """Отправить ежедневный отчет"""
-        logger.info("Подготовка ежедневного отчета...")
+        """Отправить ежедневный отчёт"""
+        logger.info("Подготовка ежедневного отчёта...")
         try:
-            text = "*ЩОДЕННИЙ ЗВІТ МОНІТОРИНГУ*\n"
-            text += f"Дата: {datetime.now().strftime('%Y-%m-%d %H:%M')}\n\n"
-
-            # Проверка сайтов
-            sites_results = await check_all_sites()
-            text += "*🌐 САЙТЫ:*\n"
-            if sites_results:
-                for site in sites_results[:5]:
-                    status = '✅' if site.get('success') else '❌'
-                    text += f"{status} {site.get('url', 'Unknown')}\n"
-            else:
-                text += "Нет данных\n"
-
-            # Docker статус
-            text += "\n*🐳 DOCKER:*\n"
-            docker_results = check_all_docker_servers()
-            if docker_results:
-                for server_id, result in docker_results.items():
-                    if result.get('status') == 'success':
-                        running = result.get('running_containers', 0)
-                        total = result.get('total_containers', 0)
-                        text += f"{server_id.upper()}: {running}/{total}\n"
-                    else:
-                        text += f"{server_id.upper()}: Ошибка\n"
-            else:
-                text += "Нет данных\n"
-
-            # Отправка
-            if self.admin_chat_id:
-                await self.application.bot.send_message(
-                    chat_id=self.admin_chat_id,
-                    text=text,
-                    parse_mode='Markdown'
-                )
-                logger.info("Ежедневный отчет отправлен")
-            else:
-                logger.warning("Не указан admin_chat_id для отправки отчета")
-
+            await send_daily_report()
         except Exception as e:
-            logger.error(f"Ошибка отправки ежедневного отчета: {e}")
+            logger.error(f"Ошибка отправки ежедневного отчёта: {e}")
+
+    async def _analyze_trends(self) -> None:
+        """Анализ трендов ошибок"""
+        logger.info("Анализ трендов ошибок...")
+        try:
+            trends = get_trends(days=7)
+            
+            # Если есть тревожные тренды (рост ошибок > 50%)
+            if trends['total_errors'] > 0:
+                # Здесь можно добавить логику для уведомлений о трендах
+                logger.info(f"Тренды за неделю: {trends['total_errors']} ошибок, {trends['unique_errors']} уникальных")
+        except Exception as e:
+            logger.error(f"Ошибка при анализе трендов: {e}")
+
+    async def _cleanup_old_data(self) -> None:
+        """Очистка старых данных из БД аналитики"""
+        logger.info("Очистка старых данных...")
+        try:
+            # Очищаем ошибки старше 30 дней
+            import sqlite3
+            from analytics.error_analyzer import DB_PATH
+            
+            conn = sqlite3.connect(str(DB_PATH))
+            cursor = conn.cursor()
+            
+            cursor.execute('''
+                DELETE FROM errors
+                WHERE created_at < datetime('now', '-30 days')
+            ''')
+            
+            cursor.execute('''
+                DELETE FROM error_trends
+                WHERE date < date('now', '-30 days')
+            ''')
+            
+            deleted_errors = cursor.rowcount
+            conn.commit()
+            conn.close()
+            
+            logger.info(f"Очищено {deleted_errors} старых записей")
+        except Exception as e:
+            logger.error(f"Ошибка при очистке старых данных: {e}")
 
     def start(self) -> None:
         """Запустить планировщик"""

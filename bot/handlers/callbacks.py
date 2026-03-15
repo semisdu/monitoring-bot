@@ -39,7 +39,15 @@ from .docker import (
     docker_restart_server,
     docker_restart_all
 )
-
+from .report import (
+    report_command,
+    report_now,
+    show_trends,
+    show_active_problems,
+    report_test,
+    resolve_all_errors,
+    resolve_error_callback
+)
 logger = logging.getLogger(__name__)
 
 
@@ -131,6 +139,30 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         await monitor_status_command(update, context)
     elif callback_data == "monitor_log":
         await monitor_log_command(update, context)
+
+    # ===== ОТЧЁТЫ И АНАЛИТИКА =====
+    elif callback_data == "report":
+        from .report import report_command
+        await report_command(update, context)
+    elif callback_data == "report_now":
+        from .report import report_now
+        await report_now(update, context)
+    elif callback_data == "show_trends":
+        from .report import show_trends
+        await show_trends(update, context)
+    elif callback_data == "show_active_problems":
+        from .report import show_active_problems
+        await show_active_problems(update, context)
+    elif callback_data == "report_test":
+        from .report import report_test
+        await report_test(update, context)
+    elif callback_data == "resolve_all_errors":
+        from .report import resolve_all_errors
+        await resolve_all_errors(update, context)
+    elif callback_data.startswith("resolve_error_"):
+        error_id = int(callback_data.replace("resolve_error_", ""))
+        from .report import resolve_error_callback
+        await resolve_error_callback(update, context, error_id)
 
     # ===== ОЧИСТКА =====
     elif callback_data == "cleanup":
@@ -292,6 +324,8 @@ def register_handlers(application):
     application.add_handler(CommandHandler("cleanup", cleanup_command))
     application.add_handler(CommandHandler("pve", pve_status_command))
     application.add_handler(CommandHandler("pbs", pbs_status_command))
+    application.add_handler(CommandHandler("report", report_command))
+    application.add_handler(CommandHandler("trends", show_trends))
 
     application.add_handler(CallbackQueryHandler(callback_handler))
 

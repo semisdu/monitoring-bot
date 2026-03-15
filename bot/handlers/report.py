@@ -1,0 +1,416 @@
+#!/usr/bin/env python3
+"""
+Обработчики команд для отчётов и аналитики
+"""
+
+import logging
+from datetime import datetime, timedelta
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import ContextTypes
+
+from bot.language import get_text
+from bot.handlers.common import get_user_id, send_or_edit_message
+from bot.notifications import send_daily_report, send_test
+from analytics.error_analyzer import get_current_problems, get_trends, resolve_error
+
+logger = logging.getLogger(__name__)
+
+
+async def report_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Обработчик команды /report - меню отчётов"""
+    user_id = get_user_id(update)
+
+    text = f"*{get_text(user_id, 'report', 'title')}:*\n\n"
+    text += f"{get_text(user_id, 'common', 'select_action')}\n"
+
+    keyboard = [
+        [
+            InlineKeyboardButton(
+                get_text(user_id, 'report', 'now'),
+                callback_data="report_now"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                get_text(user_id, 'trends', 'title'),
+                callback_data="show_trends"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                get_text(user_id, 'alerts', 'title'),
+                callback_data="show_active_problems"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                get_text(user_id, 'report', 'test'),
+                callback_data="report_test"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                get_text(user_id, "common", "back"),
+                callback_data="menu"
+            )
+        ]
+    ]
+
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await send_or_edit_message(update, text, reply_markup=reply_markup)
+
+
+async def report_now(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Сформировать отчёт сейчас"""
+    user_id = get_user_id(update)
+
+    await send_or_edit_message(
+        update,
+        get_text(user_id, 'report', 'generating')
+    )
+
+    try:
+        await send_daily_report()
+        
+        # Показываем меню отчётов с подтверждением
+        text = f"*{get_text(user_id, 'report', 'title')}:*\n\n"
+        text += f" {get_text(user_id, 'report', 'generated')}\n\n"
+        text += f"{get_text(user_id, 'common', 'select_action')}\n"
+
+        keyboard = [
+            [
+                InlineKeyboardButton(
+                    get_text(user_id, 'report', 'now'),
+                    callback_data="report_now"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    get_text(user_id, 'trends', 'title'),
+                    callback_data="show_trends"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    get_text(user_id, 'alerts', 'title'),
+                    callback_data="show_active_problems"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    get_text(user_id, 'report', 'test'),
+                    callback_data="report_test"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    get_text(user_id, "common", "back"),
+                    callback_data="menu"
+                )
+            ]
+        ]
+
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await send_or_edit_message(update, text, reply_markup=reply_markup)
+        
+    except Exception as e:
+        logger.error(f"Ошибка при формировании отчёта: {e}")
+        await send_or_edit_message(
+            update,
+            f"{get_text(user_id, 'common', 'error')}: {get_text(user_id, 'report', 'failed')}"
+        )
+
+
+async def show_trends(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Показать тренды ошибок"""
+    user_id = get_user_id(update)
+
+    await send_or_edit_message(
+        update,
+        f"{get_text(user_id, 'common', 'loading')}..."
+    )
+
+    try:
+        # Получаем тренды за неделю
+        trends = get_trends(days=7)
+
+        text = f"*{get_text(user_id, 'trends', 'title')}*\n\n"
+
+        # Общая статистика
+        text += f"*{get_text(user_id, 'analytics', 'daily_report_summary')}:*\n"
+        text += f"• {get_text(user_id, 'analytics', 'daily_report_total_errors')}: {trends['total_errors']}\n"
+        text += f"• {get_text(user_id, 'analytics', 'daily_report_unique_problems')}: {trends['unique_errors']}\n"
+        text += f"• {get_text(user_id, 'analytics', 'daily_report_resolved')}: {trends['resolved']}\n\n"
+
+        # По типам
+        if trends['by_type']:
+            text += f"*{get_text(user_id, 'trends', 'by_type')}:*\n"
+            for t in trends['by_type']:
+                error_type_key = f"error_types_{t['type']}"
+                error_type = get_text(user_id, 'analytics', error_type_key)
+                text += f"• {error_type}: {t['count']}\n"
+            text += "\n"
+
+        # По дням
+        if trends['by_day']:
+            text += f"*{get_text(user_id, 'trends', 'by_day')}:*\n"
+            for d in trends['by_day']:
+                total_errors_text = get_text(user_id, 'analytics', 'daily_report_total_errors').lower()
+                text += f"• {d['date']}: {d['count']} {total_errors_text}\n"
+            text += "\n"
+
+        # Активные проблемы
+        problems = get_current_problems(limit=5)
+        if problems:
+            text += f"*{get_text(user_id, 'analytics', 'daily_report_active')}:*\n"
+            for p in problems:
+                severity_icon = "🚨" if p['severity'] == 'critical' else "⚠️"
+                error_type_key = f"error_types_{p['error_type']}"
+                error_type = get_text(user_id, 'analytics', error_type_key)
+                text += f"{severity_icon} {error_type} (x{p['occurrence_count']})\n"
+
+        # Кнопка "Назад" в меню отчётов
+        keyboard = [[
+            InlineKeyboardButton(
+                get_text(user_id, "common", "back"),
+                callback_data="report"
+            )
+        ]]
+
+        await send_or_edit_message(update, text, reply_markup=InlineKeyboardMarkup(keyboard))
+
+    except Exception as e:
+        logger.error(f"Ошибка при показе трендов: {e}")
+        await send_or_edit_message(
+            update,
+            f"{get_text(user_id, 'common', 'error')}: {str(e)}"
+        )
+
+
+async def show_active_problems(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Показать активные проблемы"""
+    user_id = get_user_id(update)
+
+    try:
+        problems = get_current_problems(limit=20)
+
+        text = f"*{get_text(user_id, 'alerts', 'title')}:*\n\n"
+
+        if not problems:
+            text += get_text(user_id, 'alerts', 'no_alerts')
+        else:
+            for i, p in enumerate(problems, 1):
+                severity_icon = "🚨" if p['severity'] == 'critical' else "⚠️"
+                error_type_key = f"error_types_{p['error_type']}"
+                error_type = get_text(user_id, 'analytics', error_type_key)
+
+                text += f"{i}. {severity_icon} *{error_type}*\n"
+                text += f"   📝 {p['message'][:100]}\n"
+
+                if p['server_id']:
+                    text += f"   🖥 {p['server_id']}\n"
+                if p['container_name']:
+                    text += f"   📦 {p['container_name']}\n"
+                if p['site_url']:
+                    text += f"   🌐 {p['site_url']}\n"
+
+                text += f"   🔄 {get_text(user_id, 'common', 'total')}: {p['occurrence_count']}\n"
+                text += f"   ⏰ {p['last_seen'][:19]}\n"
+
+                text += "\n"
+
+        # Кнопки навигации
+        if problems:
+            if len(problems) == 1:
+                keyboard = [
+                    [
+                        InlineKeyboardButton(
+                            get_text(user_id, 'alerts', 'clear'),
+                            callback_data=f"resolve_error_{problems[0]['id']}"
+                        )
+                    ],
+                    [
+                        InlineKeyboardButton(
+                            get_text(user_id, "common", "back"),
+                            callback_data="report"
+                        )
+                    ]
+                ]
+            else:
+                keyboard = [
+                    [
+                        InlineKeyboardButton(
+                            get_text(user_id, 'alerts', 'clear_all'),
+                            callback_data="resolve_all_errors"
+                        )
+                    ],
+                    [
+                        InlineKeyboardButton(
+                            get_text(user_id, "common", "back"),
+                            callback_data="report"
+                        )
+                    ]
+                ]
+        else:
+            keyboard = [[
+                InlineKeyboardButton(
+                    get_text(user_id, "common", "back"),
+                    callback_data="report"
+                )
+            ]]
+
+        await send_or_edit_message(update, text, reply_markup=InlineKeyboardMarkup(keyboard))
+
+    except Exception as e:
+        logger.error(f"Ошибка при показе активных проблем: {e}")
+        await send_or_edit_message(
+            update,
+            f"{get_text(user_id, 'common', 'error')}: {str(e)}"
+        )
+
+
+async def resolve_error_callback(update: Update, context: ContextTypes.DEFAULT_TYPE, error_id: int) -> None:
+    """Пометить ошибку как решённую"""
+    user_id = get_user_id(update)
+
+    try:
+        if resolve_error(error_id):
+            text = f"{get_text(user_id, 'common', 'success')}\n"
+            text += f"{get_text(user_id, 'alerts', 'clear')} #{error_id}"
+        else:
+            text = f"{get_text(user_id, 'common', 'error')}: {get_text(user_id, 'common', 'no_data')}"
+
+        # Показываем обновлённый список
+        await show_active_problems(update, context)
+
+    except Exception as e:
+        logger.error(f"Ошибка при разрешении ошибки {error_id}: {e}")
+        await send_or_edit_message(
+            update,
+            f"{get_text(user_id, 'common', 'error')}: {str(e)}"
+        )
+
+
+async def resolve_all_errors(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Пометить все ошибки как решённые"""
+    user_id = get_user_id(update)
+
+    try:
+        problems = get_current_problems()
+        count = 0
+
+        for p in problems:
+            if resolve_error(p['id']):
+                count += 1
+
+        # Показываем меню отчётов с результатом
+        text = f"*{get_text(user_id, 'report', 'title')}:*\n\n"
+        text += f"✅ {get_text(user_id, 'common', 'success')}\n"
+        text += f"{get_text(user_id, 'alerts', 'clear_all')}: {count}\n\n"
+        text += f"{get_text(user_id, 'common', 'select_action')}\n"
+
+        keyboard = [
+            [
+                InlineKeyboardButton(
+                    get_text(user_id, 'report', 'now'),
+                    callback_data="report_now"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    get_text(user_id, 'trends', 'title'),
+                    callback_data="show_trends"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    get_text(user_id, 'alerts', 'title'),
+                    callback_data="show_active_problems"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    get_text(user_id, 'report', 'test'),
+                    callback_data="report_test"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    get_text(user_id, "common", "back"),
+                    callback_data="menu"
+                )
+            ]
+        ]
+
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await send_or_edit_message(update, text, reply_markup=reply_markup)
+
+    except Exception as e:
+        logger.error(f"Ошибка при разрешении всех ошибок: {e}")
+        await send_or_edit_message(
+            update,
+            f"{get_text(user_id, 'common', 'error')}: {str(e)}"
+        )
+
+
+async def report_test(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Отправить тестовое уведомление"""
+    user_id = get_user_id(update)
+
+    await send_or_edit_message(
+        update,
+        f"{get_text(user_id, 'common', 'loading')}..."
+    )
+
+    try:
+        if await send_test():
+            text = get_text(user_id, 'notifications', 'test_success')
+        else:
+            text = get_text(user_id, 'notifications', 'test_fail')
+
+        # Показываем результат и кнопку "Назад" в меню отчётов
+        result_text = f"*{get_text(user_id, 'report', 'title')}:*\n\n"
+        result_text += f"{text}\n\n"
+        result_text += f"{get_text(user_id, 'common', 'select_action')}\n"
+
+        keyboard = [
+            [
+                InlineKeyboardButton(
+                    get_text(user_id, 'report', 'now'),
+                    callback_data="report_now"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    get_text(user_id, 'trends', 'title'),
+                    callback_data="show_trends"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    get_text(user_id, 'alerts', 'title'),
+                    callback_data="show_active_problems"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    get_text(user_id, 'report', 'test'),
+                    callback_data="report_test"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    get_text(user_id, "common", "back"),
+                    callback_data="menu"
+                )
+            ]
+        ]
+
+        await send_or_edit_message(update, result_text, reply_markup=InlineKeyboardMarkup(keyboard))
+
+    except Exception as e:
+        logger.error(f"Ошибка при отправке тестового уведомления: {e}")
+        await send_or_edit_message(
+            update,
+            f"{get_text(user_id, 'common', 'error')}: {str(e)}"
+        )

@@ -32,20 +32,30 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     logger.info(f"Пользователь {user_id} запустил бота")
 
     text = get_text(user_id, 'start', 'welcome', name=name)
+    
+    # Создаём клавиатуру с кнопками
     keyboard = [
         [InlineKeyboardButton(get_text(user_id, "menu", "status"), callback_data="status")],
         [InlineKeyboardButton(get_text(user_id, "menu", "docker"), callback_data="docker")],
         [InlineKeyboardButton(get_text(user_id, "menu", "sites"), callback_data="sites")],
-        [InlineKeyboardButton(get_text(user_id, "menu", "pve"), callback_data="pve_status"),
-         InlineKeyboardButton(get_text(user_id, "menu", "pbs"), callback_data="pbs_status")],
-        [InlineKeyboardButton(get_text(user_id, "menu", "alerts"), callback_data="alerts"),
-         InlineKeyboardButton(get_text(user_id, "menu", "stats"), callback_data="stats")],
-        [InlineKeyboardButton(get_text(user_id, "menu", "logs"), callback_data="logs")],
+        [
+            InlineKeyboardButton(get_text(user_id, "menu", "pve"), callback_data="pve_status"),
+            InlineKeyboardButton(get_text(user_id, "menu", "pbs"), callback_data="pbs_status")
+        ],
+        [
+            InlineKeyboardButton(get_text(user_id, "menu", "alerts"), callback_data="alerts"),
+            InlineKeyboardButton(get_text(user_id, "menu", "stats"), callback_data="stats")
+        ],
+        [
+            InlineKeyboardButton(get_text(user_id, "menu", "logs"), callback_data="logs"),
+            InlineKeyboardButton(get_text(user_id, "menu", "reports"), callback_data="report")
+        ],
         [
             InlineKeyboardButton(get_text(user_id, "menu", "language"), callback_data="language"),
             InlineKeyboardButton("🙏 Сказати спасибі", callback_data="donate")
         ]
     ]
+    
     reply_markup = InlineKeyboardMarkup(keyboard)
 
     await send_or_edit_message(update, text, reply_markup=reply_markup)
