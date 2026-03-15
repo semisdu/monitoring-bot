@@ -9,7 +9,7 @@ paths:
   base_dir: "/opt/monitoring-bot"
   logs: "logs"
   database: "database"
-  ssh_keys: "/home/username/.ssh"
+  ssh_keys: "~/.ssh"  # Directory where SSH keys are stored (can be empty)
 
 # ==================== СЕРВЕРЫ ====================
 servers:
@@ -17,9 +17,9 @@ servers:
   - id: "example-server"
     name: "Example Server"
     host: "192.168.1.100"
-    user: "username"
+    user: "username"        # SSH user on the server
     port: 22
-    ssh_key: "id_ed25519"
+    ssh_key: "id_ed25519"   # Only filename, bot will find it in ~/.ssh/
     docker_enabled: true
     containers:
       - name: "postgres"
@@ -169,41 +169,36 @@ features:
   enable_docker: true
   enable_site_check: true
 
-# ==================== НАСТРОЙКИ АНАЛИТИКИ (НОВОЕ) ====================
+# ==================== НАСТРОЙКИ АНАЛИТИКИ ====================
 analytics:
   enabled: true
   error_tracking:
     enabled: true
-    group_similar: true  # Группировать похожие ошибки
-    similar_threshold: 0.8  # Порог схожести сообщений (0.0 - 1.0)
-    store_history_days: 30  # Хранить историю ошибок
+    group_similar: true
+    similar_threshold: 0.8
+    store_history_days: 30
   trends:
     enabled: true
-    period_days: 7  # Анализировать тренды за неделю
+    period_days: 7
   recommendations:
     enabled: true
-    auto_fix: false  # Автоматически применять простые фиксы (перезапуск и т.д.)
+    auto_fix: false
 
-# ==================== НАСТРОЙКИ УВЕДОМЛЕНИЙ (НОВОЕ) ====================
+# ==================== НАСТРОЙКИ УВЕДОМЛЕНИЙ ====================
 notifications:
-  # Язык уведомлений (ru, uk, en)
   language: "ru"
-  
-  # Мгновенные алерты
   instant_alerts:
     enabled: true
-    cooldown_minutes: 30  # Не спамить об одной ошибке чаще
-    group_during_cooldown: true  # Группировать ошибки за период
+    cooldown_minutes: 30
+    group_during_cooldown: true
     channels:
       - telegram
-    critical_only: false  # true - только критические проблемы
-  
-  # Ежедневный отчёт
+    critical_only: false
   daily_report:
     enabled: true
     time: "09:00"
     timezone: "Europe/Kiev"
-    format: "detailed"  # simple/detailed/executive
+    format: "detailed"
     channels:
       - telegram
     sections:
@@ -219,9 +214,9 @@ notifications:
       - pbs
       - system
 
-# ==================== НАСТРОЙКИ SSH (ДЛЯ ПОДКЛЮЧЕНИЙ) ====================
+# ==================== НАСТРОЙКИ SSH ====================
 ssh:
   connection_timeout: 10
   command_timeout: 30
-  max_connections: 5  # Параллельных подключений
-  retry_attempts: 2   # Попыток при ошибке
+  max_connections: 5
+  retry_attempts: 2

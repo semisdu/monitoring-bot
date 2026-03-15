@@ -199,17 +199,12 @@
     "uk": "🇺🇦 Українська"
   },
   "analytics": {
-    "title": "📊 Error analytics",
     "daily_report": {
-      "title": "📊 DAILY REPORT",
-      "date": "📅 Date",
       "summary": "📈 SUMMARY STATISTICS",
       "total_errors": "Total errors",
       "unique_problems": "Unique problems",
       "resolved": "Resolved",
-      "active": "🔴 ACTIVE PROBLEMS",
-      "by_type": "📊 BY TYPE",
-      "trends": "📈 WEEKLY TRENDS"
+      "active": "🔴 ACTIVE PROBLEMS"
     },
     "error_types": {
       "docker_down": "Container down",
@@ -218,7 +213,7 @@
       "disk_full": "Disk space low",
       "backup_old": "Backup outdated",
       "connection_error": "Connection error",
-      "test_error": "Test notification"
+      "test_error": "Test error"
     },
     "severity": {
       "critical": "🚨 Critical",
@@ -260,20 +255,6 @@
     }
   },
   "notifications": {
-    "instant": {
-      "title": "🔔 Instant notification",
-      "server": "🖥 Server",
-      "container": "📦 Container",
-      "site": "🌐 Site",
-      "time": "⏰ Time",
-      "details": "📝 Details"
-    },
-    "daily": {
-      "title": "📊 Daily report",
-      "summary": "📈 Summary",
-      "details": "🔍 Details",
-      "clear": "🧹 Clear"
-    },
     "test": {
       "success": "✅ Test notification sent",
       "fail": "❌ Failed to send test notification"
@@ -281,20 +262,12 @@
   },
   "trends": {
     "title": "📈 Error trends",
-    "period": "Period",
-    "day": "day",
-    "week": "week",
-    "month": "month",
-    "total": "Total",
-    "unique": "Unique",
-    "resolved": "Resolved",
     "by_type": "By type",
     "by_day": "By day"
   },
   "report": {
     "title": "📊 Report",
-    "now": "🔍 Generate now",
-    "config": "⚙️ Report settings",
+    "now": "📅 Generate now",
     "test": "🔔 Test notification",
     "generating": "⏳ Generating report...",
     "generated": "✅ Report generated",

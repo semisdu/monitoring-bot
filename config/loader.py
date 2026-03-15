@@ -77,21 +77,65 @@ def get_paths_config() -> Dict[str, str]:
 def get_ssh_keys_path() -> str:
     """Получить путь к директории с SSH ключами"""
     paths = get_paths_config()
-    return paths.get('ssh_keys', '/home/semis/.ssh')
+    return paths.get('ssh_keys', '')
+
+
+def find_ssh_key(key_name: str) -> Optional[str]:
+    """
+    Умный поиск SSH ключа в разных местах.
+    
+    Args:
+        key_name: Имя файла ключа (например, "id_ed25519")
+    
+    Returns:
+        Полный путь к ключу или None, если не найден
+    """
+    if not key_name:
+        return None
+    
+    # 1. Проверяем по указанному в конфиге пути
+    ssh_keys_path = get_ssh_keys_path()
+    if ssh_keys_path:
+        expanded_path = os.path.expanduser(ssh_keys_path)
+        full_path = os.path.join(expanded_path, key_name)
+        if os.path.exists(full_path):
+            return full_path
+    
+    # 2. Проверяем в стандартной ~/.ssh/
+    home_ssh = os.path.expanduser(f"~/.ssh/{key_name}")
+    if os.path.exists(home_ssh):
+        return home_ssh
+    
+    # 3. Проверяем в текущей директории
+    local_path = os.path.join(os.getcwd(), key_name)
+    if os.path.exists(local_path):
+        return local_path
+    
+    # 4. Проверяем в директории проекта
+    project_path = os.path.join(os.path.dirname(__file__), '..', 'keys', key_name)
+    if os.path.exists(project_path):
+        return project_path
+    
+    return None
 
 
 def get_full_ssh_key_path(key_name: str) -> str:
     """
-    Получить полный путь к SSH ключу по имени файла
+    Получить полный путь к SSH ключу по имени файла.
+    Если ключ не найден, возвращает просто имя (для обратной совместимости).
     
     Args:
-        key_name: Имя файла ключа (например, "id_ed25519_monitoring")
+        key_name: Имя файла ключа
     
     Returns:
-        Полный путь к ключу
+        Полный путь к ключу или просто имя, если не найден
     """
-    ssh_path = get_ssh_keys_path()
-    return os.path.join(ssh_path, key_name)
+    found_path = find_ssh_key(key_name)
+    if found_path:
+        return found_path
+    
+    # Если не нашли, пробуем подставить в стандартный путь
+    return os.path.expanduser(f"~/.ssh/{key_name}")
 
 
 def get_features() -> Dict[str, bool]:
