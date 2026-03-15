@@ -257,3 +257,27 @@ If the bot helps you in your work, you can thank the author:
 - TON: `UQCRwgcrOBjEUV79ISt6swrHp2U9Yv2t8o2vANxQRBFeVEjx`
 - USDT (TRC-20): `TSxk8tgR5JjPn8xJakuejjrJcSnTdZAhFa`
 - BTC: `bc1q9rjhewccuzhj2drga3gqmrqjdfc362xjsa6hwy`
+
+## 📁 Структура конфига для Docker
+
+### Имена контейнеров
+Имена, которые вы видите в команде `/docker`, берутся из вашего `config.yml`:
+
+`servers:`
+`  - id: "my-server"`
+`    name: "Отображаемое имя сервера"`
+`    containers:`
+`      - name: "postgres"        # Это имя контейнера`
+`        service_name: "postgres"`
+`        critical: true`
+`      - name: "app"              # Это имя контейнера`
+`        service_name: "web"`
+`        critical: true`
+
+### Важно!
+Имена контейнеров в конфиге должны **точно совпадать** с реальными именами на сервере.
+
+Проверить реальные имена можно командой:
+`docker ps --format "table {{.Names}}"`
+
+Если имя в конфиге не совпадает с реальным, бот покажет контейнер как неработающий (🔴).
