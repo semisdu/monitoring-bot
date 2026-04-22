@@ -29,7 +29,8 @@ class ServerChecker:
     
     def __init__(self) -> None:
         """Инициализация проверщика серверов"""
-        self.ssh_clients: Dict[str, paramiko.SSHClient] = {}
+        self.ssh_clients: Dict[str, dict] = {}
+        self.ssh_max_age = 300  # 5 минут
     
     def _get_ssh_client(self, server_name: str) -> Optional[paramiko.SSHClient]:
         """
@@ -41,10 +42,18 @@ class ServerChecker:
         Returns:
             SSH клиент или None при ошибке
         """
+        import time
+        now = time.time()
+        
         if server_name in self.ssh_clients:
-            client = self.ssh_clients[server_name]
-            if self._is_connection_alive(client):
+            entry = self.ssh_clients[server_name]
+            client = entry['client']
+            created = entry['created']
+            age = now - created
+            if age < self.ssh_max_age and self._is_connection_alive(client):
+                logger.info(f"[CACHE] Использую существующее SSH соединение для {server_name} (возраст {age:.0f}с)")
                 return client
+            logger.info(f"[CLOSE] Закрываю старое SSH соединение для {server_name} (возраст {age:.0f}с)")
             self._close_client(server_name, client)
         
         if server_name not in SERVERS:
@@ -56,7 +65,7 @@ class ServerChecker:
         try:
             client = self._create_ssh_client(server_name, server_config)
             if client:
-                self.ssh_clients[server_name] = client
+                self.ssh_clients[server_name] = {'client': client, 'created': now}
                 logger.info(f"SSH подключение установлено для {server_name}")
             return client
             
