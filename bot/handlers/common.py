@@ -40,6 +40,7 @@ async def send_or_edit_message(update: Update, text: str, parse_mode: str = "Mar
                 parse_mode=parse_mode,
                 reply_markup=reply_markup
             )
+        else:
+            logger.error("Нет callback_query и нет message в update")
     except Exception as e:
         logger.error(f"Ошибка отправки/редактирования сообщения: {e}")
-

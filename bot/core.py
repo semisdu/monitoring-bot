@@ -6,13 +6,14 @@
 import asyncio
 import logging
 import sys
-from typing import Optional, Any
+from typing import Optional
 
 from telegram import Update
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 
 from config.settings import TELEGRAM_TOKEN, FEATURES
 from bot.handlers import register_handlers
+from bot.notifications import init_notification_manager
 from .scheduler import setup_scheduler
 
 logger = logging.getLogger(__name__)
@@ -33,14 +34,13 @@ class MonitoringBot:
             logger.error("TELEGRAM_TOKEN не установлен!")
             sys.exit(1)
 
-        # Создаём приложение
         self.application = Application.builder().token(TELEGRAM_TOKEN).build()
         self.job_queue = self.application.job_queue
+        
+        # Инициализируем NotificationManager с ботом из Application
+        init_notification_manager(self.application.bot)
 
-        # Регистрируем обработчики
         register_handlers(self.application)
-
-        # Настраиваем обработчик ошибок
         self.application.add_error_handler(self._error_handler)
 
         logger.info("Telegram приложение инициализировано")
@@ -57,7 +57,6 @@ class MonitoringBot:
             logger.error("Application не инициализирован")
             return
 
-        # Передаём application в планировщик
         self.scheduler = setup_scheduler(self.application)
 
         if self.scheduler:
@@ -75,21 +74,17 @@ class MonitoringBot:
 
     async def run(self) -> None:
         """Запуск бота."""
-        # Инициализация
         self.setup_application()
 
-        # Настройка планировщика (если включено)
         if FEATURES.get("enable_log_monitoring", True):
             self.setup_scheduler()
 
-        # Запуск
         logger.info("Запуск бота...")
 
         if not self.application:
             logger.error("Application не инициализирован")
             return
 
-        # Запускаем polling
         await self.application.initialize()
         await self.application.start()
         await self.application.updater.start_polling(
@@ -98,7 +93,6 @@ class MonitoringBot:
             allowed_updates=["message", "callback_query"]
         )
         
-        # Держим бота запущенным
         try:
             while True:
                 await asyncio.sleep(1)
