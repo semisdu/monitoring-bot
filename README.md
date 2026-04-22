@@ -281,3 +281,51 @@ If the bot helps you in your work, you can thank the author:
 `docker ps --format "table {{.Names}}"`
 
 Если имя в конфиге не совпадает с реальным, бот покажет контейнер как неработающий (🔴).
+
+## Разработчикам
+
+### Установка для разработки
+
+git clone https://github.com/semisdu/monitoring-bot.git
+cd monitoring-bot
+python -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+cp config/config.yml.example config/config.yml
+# Отредактируйте config/config.yml
+
+### Запуск тестов
+
+pytest tests/ -v
+
+### Проверка типов (опционально)
+
+mypy bot/ checks/ utils/ --ignore-missing-imports
+
+## Структура проекта
+
+monitoring-bot/
+├── bot/           # Основная логика бота
+├── checks/        # Модули проверок (Docker, PVE, PBS, сайты)
+├── config/        # Конфигурация
+├── database/      # Работа с БД
+├── utils/         # Вспомогательные модули (SSH пул и др.)
+├── tests/         # Тесты
+├── logs/          # Логи (ротируются logrotate)
+└── docs/          # Документация
+
+## Управление сервисом
+
+sudo systemctl status monitoring-bot-refactored
+sudo systemctl restart monitoring-bot-refactored
+sudo journalctl -u monitoring-bot-refactored -f
+
+## Health check
+
+./health_check.py && echo "OK" || echo "FAIL"
+
+## Мониторинг
+
+- Ежедневные отчёты в 8:00
+- Алерты о проблемах в реальном времени
+- SSH пул с кешированием (5 минут)
