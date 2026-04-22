@@ -306,7 +306,8 @@
       "django_app": "Django додаток",
       "postgres": "PostgreSQL",
       "nginx": "Nginx",
-      "celery": "Celery"
+      "celery": "Celery",
+      "collabora": "Collabora Online"
     },
     "messages": {
       "error_found": "🚨 *Помилка в контейнері!*",

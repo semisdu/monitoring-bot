@@ -1,47 +1,42 @@
 #!/usr/bin/env python3
 """
-Monitoring Bot - основной файл запуска
-Чистая рефакторинговая версия
+Точка входа для Monitoring Bot
 """
-import sys
-import os
+
+import asyncio
 import logging
+import sys
 from pathlib import Path
 
-# Добавляем корневую директорию в путь
-sys.path.insert(0, str(Path(__file__).parent))
-
-# Импортируем конфигурацию
-from config.settings import LOGGING, BASE_DIR
-
-# Настраиваем логирование
-os.makedirs(BASE_DIR / "logs", exist_ok=True)
+# Настройка логирования
 logging.basicConfig(
-    level=getattr(logging, LOGGING["level"]),
-    format=LOGGING["format"],
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler(LOGGING["file"]),
+        logging.FileHandler('logs/bot.log'),
         logging.StreamHandler()
     ]
 )
-logger = logging.getLogger(__name__)
+
+sys.path.insert(0, str(Path(__file__).parent))
+
+from bot.core import MonitoringBot
+
+async def run_bot():
+    """Запуск бота."""
+    bot = MonitoringBot()
+    await bot.run()
 
 def main():
-    """Основная функция запуска"""
-    logger.info("=" * 60)
-    logger.info("🚀 Monitoring Bot - Запуск рефакторинг версии")
-    logger.info("=" * 60)
-    
+    """Основная функция."""
     try:
-        # Импортируем и инициализируем бота
-        from bot.core import MonitoringBot
-        bot = MonitoringBot()
-        bot.run()
-        
+        asyncio.run(run_bot())
     except KeyboardInterrupt:
-        logger.info("Остановка бота по запросу пользователя")
+        logging.info("Бот остановлен пользователем")
     except Exception as e:
-        logger.error(f"Критическая ошибка при запуске бота: {e}", exc_info=True)
+        logging.error(f"Критическая ошибка: {e}")
+        import traceback
+        traceback.print_exc()
         sys.exit(1)
 
 if __name__ == "__main__":

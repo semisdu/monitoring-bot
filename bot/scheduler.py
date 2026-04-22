@@ -86,7 +86,7 @@ class MonitoringScheduler:
             self._add_job(
                 name="container_log_check",
                 func=self._check_container_logs,
-                cron=self.schedule_config.get('log_check', '*/5 * * * *'),  # Можно отдельное расписание
+                cron=self.schedule_config.get('log_check', '*/5 * * * *'),
                 description="Проверка логов контейнеров"
             )
 
@@ -117,7 +117,7 @@ class MonitoringScheduler:
                 description="Проверка сайтов"
             )
 
-        # Ежедневный отчёт (в 9:00 утра)
+        # Ежедневный отчёт
         if self.notifications_config.get('daily_report', {}).get('enabled', True):
             report_time = self.notifications_config.get('daily_report', {}).get('time', '09:00')
             hour, minute = map(int, report_time.split(':'))
@@ -163,8 +163,7 @@ class MonitoringScheduler:
             self.jobs[name] = {
                 'job': job,
                 'description': description,
-                'cron': cron,
-                'next_run': job.next_run_time
+                'cron': cron
             }
             logger.info(f"Задача '{name}' добавлена: {description} ({cron})")
         except Exception as e:
@@ -182,7 +181,6 @@ class MonitoringScheduler:
                 if server_id:
                     status = checker.check_remote_server(server_id)
                     if status.get('status') != 'online':
-                        # Логируем проблему в аналитику
                         record_error({
                             'error_type': 'connection_error',
                             'server_id': server_id,
@@ -207,7 +205,6 @@ class MonitoringScheduler:
                     if critical_failed > 0:
                         logger.warning(f"Docker на {server_id}: {running}/{total} работают ({critical_failed} критических не работают)")
                         
-                        # Логируем каждый упавший критический контейнер
                         for container in containers:
                             if not container.get('running') and container.get('critical'):
                                 record_error({
@@ -271,7 +268,6 @@ class MonitoringScheduler:
             
             for site, result in zip(sites, results):
                 if result.get('status') != 'up':
-                    # Логируем проблему
                     record_error({
                         'error_type': 'site_down',
                         'site_url': site.get('url'),
@@ -297,9 +293,7 @@ class MonitoringScheduler:
         try:
             trends = get_trends(days=7)
             
-            # Если есть тревожные тренды (рост ошибок > 50%)
             if trends['total_errors'] > 0:
-                # Здесь можно добавить логику для уведомлений о трендах
                 logger.info(f"Тренды за неделю: {trends['total_errors']} ошибок, {trends['unique_errors']} уникальных")
         except Exception as e:
             logger.error(f"Ошибка при анализе трендов: {e}")
@@ -308,7 +302,6 @@ class MonitoringScheduler:
         """Очистка старых данных из БД аналитики"""
         logger.info("Очистка старых данных...")
         try:
-            # Очищаем ошибки старше 30 дней
             import sqlite3
             from analytics.error_analyzer import DB_PATH
             
@@ -355,7 +348,7 @@ class MonitoringScheduler:
                 'name': name,
                 'description': info['description'],
                 'cron': info['cron'],
-                'next_run': info['job'].next_run_time
+                'next_run': None
             })
         return jobs_info
 

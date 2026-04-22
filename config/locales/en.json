@@ -306,7 +306,8 @@
       "django_app": "Django App",
       "postgres": "PostgreSQL",
       "nginx": "Nginx",
-      "celery": "Celery"
+      "celery": "Celery",
+      "collabora": "Collabora Online"
     },
     "messages": {
       "error_found": "🚨 *Container error!*",

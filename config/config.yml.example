@@ -1,15 +1,17 @@
 # Monitoring Bot Configuration Example
 # Скопируйте в config.yml и заполните своими данными
 
+# ==================== TELEGRAM ====================
 telegram:
   token: "YOUR_BOT_TOKEN_HERE"  # Получить у @BotFather
-  admin_chat_id: 123456789       # Ваш Telegram ID
+  admin_chat_id: YOUR_TELEGRAM_ID  # Ваш ID (можно узнать у @userinfobot)
 
+# ==================== ПУТИ ====================
 paths:
   base_dir: "/opt/monitoring-bot"
   logs: "logs"
   database: "database"
-  ssh_keys: "/opt/monitoring-bot/keys"  # безопасное место для SSH ключей
+  ssh_keys: "/opt/monitoring-bot/keys"
 
 # ==================== СЕРВЕРЫ ====================
 servers:
@@ -17,26 +19,25 @@ servers:
   - id: "example-server"
     name: "Example Server"
     host: "192.168.1.100"
-    user: "username"        # Пользователь SSH на сервере
+    user: "username"
     port: 22
-    ssh_key: "YOUR_KEY_NAME"   # только имя файла, без пути!
+    ssh_key: "YOUR_KEY_NAME"
     docker_enabled: true
     containers:
       - name: "postgres"
         service_name: "postgres"
         critical: true
-        log_type: "postgres"  # тип для паттернов ошибок
+        log_type: "postgres"
       - name: "app"
         service_name: "web"
         critical: true
-        log_type: "django_app"  # тип для паттернов ошибок
+        log_type: "django_app"
 
   # Пример PVE сервера
   - id: "pve-example"
     name: "PVE Hypervisor"
     host: "192.168.1.99"
-    user: "username"
-    port: 22
+    user: "root"
     ssh_key: "YOUR_KEY_NAME"
     type: "pve"
     api_enabled: true
@@ -51,7 +52,6 @@ servers:
     name: "Backup Server"
     host: "192.168.1.37"
     user: "root"
-    port: 22
     ssh_key: "YOUR_KEY_NAME"
     type: "pbs"
     api_enabled: true
@@ -71,21 +71,12 @@ sites:
     expected_status: 200
     timeout: 10
 
-  - name: "External Site"
-    url: "http://example.org"
-    type: "external"
-    check_interval: 300
-    critical: true
-    expected_status: 200
-    timeout: 10
-
 # ==================== ВИРТУАЛЬНЫЕ МАШИНЫ ====================
 virtual_machines:
   - id: "vm100-example"
     name: "Example VM"
     vmid: 100
     server_id: "pve-example"
-    description: "Пример виртуальной машины"
     critical: true
     monitoring:
       status: true
@@ -94,7 +85,7 @@ virtual_machines:
 
 # ==================== БЭКАПЫ ====================
 backup_jobs:
-  - id: "pbs-daily-backup"
+  - id: "daily-backup"
     name: "Daily VM Backups"
     server_id: "pbs-example"
     check_type: "backup_status"
@@ -102,100 +93,48 @@ backup_jobs:
     retention_days: 7
     vms: [100, 101]
 
-# ==================== МОНИТОРИНГ ЛОГОВ (ОБЫЧНЫХ) ====================
-log_monitoring:
-  enabled: false
-  check_interval: 300
-  alert_cooldown: 3600
-  daily_reminder: "09:00"
-  critical_patterns:
-    - '5\d\d'
-    - 'HTTP/1\.1" 50'
-    - 'HTTP/1\.1" 40[34]'
-    - 'CRITICAL'
-    - 'ERROR'
-    - 'Exception'
-    - 'Traceback'
-    - '\[emerg\]'
-    - '\[alert\]'
-    - '\[crit\]'
-  log_paths:
-    example-server:
-      - "/var/log/nginx/access.log"
-      - "/var/log/nginx/error.log"
-
-# ==================== НОВАЯ СЕКЦИЯ: МОНИТОРИНГ ЛОГОВ КОНТЕЙНЕРОВ ====================
+# ==================== МОНИТОРИНГ ЛОГОВ КОНТЕЙНЕРОВ ====================
 container_log_monitoring:
-  enabled: true                      # Включить мониторинг
-  check_interval: 300                 # Проверка каждые 5 минут
-  alert_cooldown: 1800                 # Не спамить об одной ошибке чаще 30 минут
-  default_log_lines: 200               # Сколько строк лога читать
+  enabled: true
+  check_interval: 300
+  alert_cooldown: 1800
+  default_log_lines: 200
   
-  # Паттерны ошибок для разных типов контейнеров
   patterns:
-    # Django приложения
     django_app:
       name: "Django App"
       patterns:
-        - ["OperationalError", "🚨 Ошибка БД: {0}"]
-        - ["DatabaseError", "🚨 Ошибка БД: {0}"]
-        - ["Internal Server Error", "🔥 500 ошибка: {0}"]
-        - ["does not exist", "❌ Таблица не существует: {0}"]
-        - ["CRITICAL", "🔥 Критическая ошибка: {0}"]
-        - ["ERROR", "⚠ Ошибка: {0}"]
-        - ["Exception", "⚠ Исключение: {0}"]
-        - ["Traceback", "📋 Traceback найден"]
-        - ["No module named", "📦 Модуль не найден: {0}"]
-        - ["Connection refused", "🔌 Подключение отклонено"]
-        - ["Timeout", "⏰ Таймаут: {0}"]
-    
-    # PostgreSQL
+        - ["OperationalError", "Ошибка БД: {0}"]
+        - ["Internal Server Error", "500 ошибка: {0}"]
+        - ["ERROR", "Ошибка: {0}"]
     postgres:
       name: "PostgreSQL"
       patterns:
-        - ["FATAL", "🔥 Фатальная ошибка: {0}"]
-        - ["PANIC", "💥 Паника БД: {0}"]
-        - ["ERROR", "⚠ Ошибка БД: {0}"]
-        - ["could not connect", "🔌 Не удаётся подключиться: {0}"]
-        - ["connection refused", "🔌 Подключение отклонено"]
-        - ["no pg_hba.conf entry", "🔒 Ошибка аутентификации"]
-        - ["database .* does not exist", "❌ БД не существует"]
-    
-    # Nginx
+        - ["FATAL", "Фатальная ошибка: {0}"]
+        - ["ERROR", "Ошибка БД: {0}"]
     nginx:
       name: "Nginx"
       patterns:
-        - ["[emerg]", "🔥 Критическая ошибка: {0}"]
-        - ["[alert]", "⚠ Тревога: {0}"]
-        - ["[crit]", "⚠ Критично: {0}"]
-        - ["[error]", "⚠ Ошибка: {0}"]
-        - ["connect\\(\\) failed", "🔌 Ошибка подключения к бэкенду"]
-        - ["open\\(\\) .* failed", "📁 Ошибка открытия файла: {0}"]
-        - ["no live upstreams", "🌐 Нет живых upstream серверов"]
-    
-    # Celery
-    celery:
-      name: "Celery"
-      patterns:
-        - ["ERROR", "⚠ Ошибка: {0}"]
-        - ["CRITICAL", "🔥 Критическая ошибка: {0}"]
-        - ["Exception", "⚠ Исключение: {0}"]
-        - ["Traceback", "📋 Traceback найден"]
-        - ["Lost connection", "🔌 Потеряно соединение"]
-        - ["Timeout", "⏰ Таймаут: {0}"]
+        - ["[error]", "Ошибка: {0}"]
+        - ["[emerg]", "Критическая ошибка: {0}"]
 
 # ==================== РАСПИСАНИЕ ====================
 schedule:
   status_check: "*/5 * * * *"
-  log_check: "*/5 * * * *"
-  daily_report: "0 9 * * *"
+  docker_check: "*/10 * * * *"
+  daily_report: "0 8 * * *"
   cleanup: "0 2 * * 1"
   vm_check: "0 */1 * * *"
   backup_check: "0 6 * * *"
-  docker_check: "*/10 * * * *"
   site_check: "*/15 * * * *"
 
-# ==================== НАСТРОЙКИ АЛЕРТОВ ====================
+# ==================== УВЕДОМЛЕНИЯ И ОТЧЁТЫ ====================
+notifications:
+  daily_report:
+    enabled: true
+    time: "08:00"  # Время отправки ежедневного отчёта
+
+# ==================== АЛЕРТЫ ====================
 alert_config:
   disk_warning_percent: 80
   disk_critical_percent: 90
@@ -205,13 +144,10 @@ alert_config:
   cpu_critical_percent: 90
   site_timeout_seconds: 10
   container_restart_threshold: 3
-  error_count_threshold: 10
-  vm_cpu_threshold: 80
-  vm_memory_threshold: 85
   backup_age_warning_hours: 48
   backup_age_critical_hours: 72
 
-# ==================== НАСТРОЙКИ ЛОГИРОВАНИЯ ====================
+# ==================== ЛОГИРОВАНИЕ ====================
 logging:
   level: "INFO"
   format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
@@ -221,7 +157,7 @@ logging:
 # ==================== ФУНКЦИОНАЛ ====================
 features:
   enable_infra_commands: true
-  enable_log_monitoring: false
+  enable_log_monitoring: true   # ВАЖНО: true для работы планировщика!
   enable_auto_restart: false
   enable_daily_reports: true
   enable_backup: true
@@ -230,55 +166,4 @@ features:
   enable_backup_check: true
   enable_docker: true
   enable_site_check: true
-
-# ==================== НАСТРОЙКИ АНАЛИТИКИ ====================
-analytics:
-  enabled: true
-  error_tracking:
-    enabled: true
-    group_similar: true
-    similar_threshold: 0.8
-    store_history_days: 30
-  trends:
-    enabled: true
-    period_days: 7
-  recommendations:
-    enabled: true
-    auto_fix: false
-
-# ==================== НАСТРОЙКИ УВЕДОМЛЕНИЙ ====================
-notifications:
-  language: "ru"
-  instant_alerts:
-    enabled: true
-    cooldown_minutes: 30
-    group_during_cooldown: true
-    channels:
-      - telegram
-    critical_only: false
-  daily_report:
-    enabled: true
-    time: "09:00"
-    timezone: "Europe/Kiev"
-    format: "detailed"
-    channels:
-      - telegram
-    sections:
-      - summary: true
-      - new_errors: true
-      - recurring: true
-      - recommendations: true
-      - trends: true
-    include:
-      - sites
-      - docker
-      - pve
-      - pbs
-      - system
-
-# ==================== НАСТРОЙКИ SSH ====================
-ssh:
-  connection_timeout: 10
-  command_timeout: 30
-  max_connections: 5
-  retry_attempts: 2
+  enable_cleanup: true
