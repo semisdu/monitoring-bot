@@ -5,6 +5,7 @@
 
 import logging
 import asyncio
+import os
 from datetime import datetime
 from typing import Dict, Any, List, Optional, Callable
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -30,12 +31,6 @@ class MonitoringScheduler:
     """Планировщик задач мониторинга"""
 
     def __init__(self, application):
-        """
-        Инициализация планировщика.
-
-        Args:
-            application: Telegram Application
-        """
         self.application = application
         self.job_queue: Optional[JobQueue] = application.job_queue
         self.scheduler = AsyncIOScheduler()
@@ -45,6 +40,11 @@ class MonitoringScheduler:
         self.features = self.config.get('features', {})
         self.notifications_config = self.config.get('notifications', {})
         self.admin_chat_id = get_admin_chat_id()
+        
+        # Путь к файлу-флагу для отслеживания отправки отчёта
+        self.report_flag_file = os.path.join(
+            os.path.dirname(__file__), '..', 'database', '.daily_report_sent'
+        )
 
     def setup(self) -> None:
         """Настройка всех запланированных задач"""
@@ -81,7 +81,7 @@ class MonitoringScheduler:
                 description="Проверка логов"
             )
 
-        # Проверка логов контейнеров (НОВАЯ ЗАДАЧА)
+        # Проверка логов контейнеров
         if self.config.get('container_log_monitoring', {}).get('enabled', True):
             self._add_job(
                 name="container_log_check",
@@ -127,6 +127,19 @@ class MonitoringScheduler:
                 cron=f"{minute} {hour} * * *",
                 description="Ежедневный отчёт"
             )
+            
+            # Задача-дублёр для проверки пропущенного отчёта (через 5 минут после основного времени)
+            check_hour = hour
+            check_minute = minute + 5
+            if check_minute >= 60:
+                check_minute -= 60
+                check_hour += 1
+            self._add_job(
+                name="missed_report_check",
+                func=self._check_missed_report,
+                cron=f"{check_minute} {check_hour} * * *",
+                description="Проверка пропущенного ежедневного отчёта"
+            )
 
         # Аналитика трендов (каждые 6 часов)
         self._add_job(
@@ -148,15 +161,6 @@ class MonitoringScheduler:
         logger.info(f"Настроено {len(self.jobs)} запланированных задач")
 
     def _add_job(self, name: str, func: Callable, cron: str, description: str) -> None:
-        """
-        Добавить задачу в планировщик.
-
-        Args:
-            name: Имя задачи
-            func: Функция для выполнения
-            cron: Cron выражение
-            description: Описание задачи
-        """
         try:
             trigger = CronTrigger.from_crontab(cron)
             job = self.scheduler.add_job(func, trigger, id=name)
@@ -170,7 +174,6 @@ class MonitoringScheduler:
             logger.error(f"Ошибка добавления задачи {name}: {e}")
 
     async def _check_servers_status(self) -> None:
-        """Проверить статус всех серверов"""
         logger.info("Запуск автоматической проверки статуса серверов...")
         try:
             checker = get_server_checker()
@@ -191,7 +194,6 @@ class MonitoringScheduler:
             logger.error(f"Ошибка при автоматической проверке статуса: {e}")
 
     async def _check_docker(self) -> None:
-        """Проверить Docker контейнеры"""
         logger.info("Запуск проверки Docker контейнеров...")
         try:
             results = check_all_docker_servers()
@@ -204,7 +206,6 @@ class MonitoringScheduler:
                     
                     if critical_failed > 0:
                         logger.warning(f"Docker на {server_id}: {running}/{total} работают ({critical_failed} критических не работают)")
-                        
                         for container in containers:
                             if not container.get('running') and container.get('critical'):
                                 record_error({
@@ -228,7 +229,6 @@ class MonitoringScheduler:
             logger.error(f"Ошибка при автоматической проверке Docker: {e}")
 
     async def _check_logs(self) -> None:
-        """Проверить логи"""
         logger.info("Запуск проверки логов...")
         try:
             await check_logs()
@@ -236,7 +236,6 @@ class MonitoringScheduler:
             logger.error(f"Ошибка при проверке логов: {e}")
 
     async def _check_container_logs(self) -> None:
-        """Проверить логи контейнеров"""
         logger.info("Запуск проверки логов контейнеров...")
         try:
             await check_container_logs()
@@ -244,7 +243,6 @@ class MonitoringScheduler:
             logger.error(f"Ошибка при проверке логов контейнеров: {e}")
 
     async def _check_pve(self) -> None:
-        """Проверить PVE"""
         logger.info("Проверка PVE VM...")
         try:
             await check_pve()
@@ -252,7 +250,6 @@ class MonitoringScheduler:
             logger.error(f"Ошибка проверки PVE: {e}")
 
     async def _check_pbs(self) -> None:
-        """Проверить PBS"""
         logger.info("Проверка PBS бэкапов...")
         try:
             await check_pbs()
@@ -260,7 +257,6 @@ class MonitoringScheduler:
             logger.error(f"Ошибка проверки PBS: {e}")
 
     async def _check_sites(self) -> None:
-        """Проверить сайты"""
         logger.info("Проверка сайтов...")
         try:
             sites = self.config.get('sites', [])
@@ -280,26 +276,50 @@ class MonitoringScheduler:
             logger.error(f"Ошибка проверки сайтов: {e}")
 
     async def _send_daily_report(self) -> None:
-        """Отправить ежедневный отчёт"""
         logger.info("Подготовка ежедневного отчёта...")
         try:
             await send_daily_report()
+            # Записываем флаг об успешной отправке
+            today = datetime.now().strftime('%Y-%m-%d')
+            os.makedirs(os.path.dirname(self.report_flag_file), exist_ok=True)
+            with open(self.report_flag_file, 'w') as f:
+                f.write(today)
+            logger.info(f"Ежедневный отчёт отправлен по расписанию, флаг установлен на {today}")
         except Exception as e:
             logger.error(f"Ошибка отправки ежедневного отчёта: {e}")
 
+    async def _check_missed_report(self) -> None:
+        """Проверить, был ли отправлен отчёт сегодня, если нет — отправить."""
+        logger.info("Проверка пропущенного ежедневного отчёта...")
+        try:
+            today = datetime.now().strftime('%Y-%m-%d')
+            
+            last_sent = None
+            if os.path.exists(self.report_flag_file):
+                with open(self.report_flag_file, 'r') as f:
+                    last_sent = f.read().strip()
+            
+            if last_sent != today:
+                logger.info(f"Отчёт за {today} не отправлен. Отправляю...")
+                await send_daily_report()
+                with open(self.report_flag_file, 'w') as f:
+                    f.write(today)
+                logger.info(f"Пропущенный отчёт за {today} отправлен")
+            else:
+                logger.info(f"Отчёт за {today} уже был отправлен ранее")
+        except Exception as e:
+            logger.error(f"Ошибка при проверке пропущенного отчёта: {e}")
+
     async def _analyze_trends(self) -> None:
-        """Анализ трендов ошибок"""
         logger.info("Анализ трендов ошибок...")
         try:
             trends = get_trends(days=7)
-            
             if trends['total_errors'] > 0:
                 logger.info(f"Тренды за неделю: {trends['total_errors']} ошибок, {trends['unique_errors']} уникальных")
         except Exception as e:
             logger.error(f"Ошибка при анализе трендов: {e}")
 
     async def _cleanup_old_data(self) -> None:
-        """Очистка старых данных из БД аналитики"""
         logger.info("Очистка старых данных...")
         try:
             import sqlite3
@@ -308,15 +328,8 @@ class MonitoringScheduler:
             conn = sqlite3.connect(str(DB_PATH))
             cursor = conn.cursor()
             
-            cursor.execute('''
-                DELETE FROM errors
-                WHERE created_at < datetime('now', '-30 days')
-            ''')
-            
-            cursor.execute('''
-                DELETE FROM error_trends
-                WHERE date < date('now', '-30 days')
-            ''')
+            cursor.execute('DELETE FROM errors WHERE created_at < datetime("now", "-30 days")')
+            cursor.execute('DELETE FROM error_trends WHERE date < date("now", "-30 days")')
             
             deleted_errors = cursor.rowcount
             conn.commit()
@@ -327,7 +340,6 @@ class MonitoringScheduler:
             logger.error(f"Ошибка при очистке старых данных: {e}")
 
     def start(self) -> None:
-        """Запустить планировщик"""
         if self.jobs:
             self.scheduler.start()
             logger.info("Планировщик успешно запущен")
@@ -335,13 +347,11 @@ class MonitoringScheduler:
             logger.warning("Нет задач для запуска")
 
     def stop(self) -> None:
-        """Остановить планировщик"""
         if self.scheduler.running:
             self.scheduler.shutdown()
             logger.info("Планировщик остановлен")
 
     def get_jobs_info(self) -> List[Dict[str, Any]]:
-        """Получить информацию о всех задачах"""
         jobs_info = []
         for name, info in self.jobs.items():
             jobs_info.append({
@@ -353,15 +363,6 @@ class MonitoringScheduler:
         return jobs_info
 
     async def run_job_now(self, job_name: str) -> bool:
-        """
-        Запустить задачу немедленно.
-
-        Args:
-            job_name: Имя задачи
-
-        Returns:
-            True если задача запущена, иначе False
-        """
         if job_name in self.jobs:
             try:
                 await self.jobs[job_name]['job'].func()
@@ -374,15 +375,6 @@ class MonitoringScheduler:
 
 
 def setup_scheduler(application) -> Optional[MonitoringScheduler]:
-    """
-    Настройка и запуск планировщика.
-
-    Args:
-        application: Telegram Application
-
-    Returns:
-        Экземпляр планировщика или None
-    """
     try:
         scheduler = MonitoringScheduler(application)
         scheduler.setup()
