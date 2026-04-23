@@ -9,6 +9,7 @@ from telegram.ext import ContextTypes
 
 from bot.language import get_text
 from bot.handlers.common import get_user_id, send_or_edit_message
+from bot.keyboards import color_button
 
 logger = logging.getLogger(__name__)
 
@@ -32,9 +33,27 @@ async def logs_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         text += f"/cleanup - {get_text(user_id, 'cleanup', 'title')}"
 
         keyboard = [
-            [InlineKeyboardButton(get_text(user_id, 'alerts', 'title'), callback_data="alerts")],
-            [InlineKeyboardButton(get_text(user_id, 'cleanup', 'title'), callback_data="cleanup_confirm")],
-            [InlineKeyboardButton(get_text(user_id, "common", "back"), callback_data="menu")]
+            [
+                color_button(
+                    get_text(user_id, 'alerts', 'title'),
+                    "alerts",
+                    "danger"
+                )
+            ],
+            [
+                color_button(
+                    get_text(user_id, 'cleanup', 'title'),
+                    "cleanup_confirm",
+                    "primary"
+                )
+            ],
+            [
+                color_button(
+                    get_text(user_id, "common", "back"),
+                    "menu",
+                    "primary"
+                )
+            ]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
 

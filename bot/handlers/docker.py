@@ -9,6 +9,7 @@ from telegram.ext import ContextTypes
 
 from bot.language import get_text
 from bot.handlers.common import get_user_id, send_or_edit_message
+from bot.keyboards import color_button, get_back_button
 from config.loader import get_docker_server_ids, get_server_config
 from checks.docker import get_docker_status, restart_docker_container, restart_all_servers_containers
 
@@ -27,13 +28,7 @@ async def docker_menu_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     if not docker_servers:
         text = f"*{get_text(user_id, 'docker', 'status')}:*\n\n"
         text += f"{get_text(user_id, 'common', 'no_servers')}\n"
-        keyboard = [[
-            InlineKeyboardButton(
-                get_text(user_id, "common", "back"),
-                callback_data="menu"
-            )
-        ]]
-        reply_markup = InlineKeyboardMarkup(keyboard)
+        reply_markup = get_back_button(get_text, user_id, "menu")
         await send_or_edit_message(update, text, reply_markup=reply_markup)
         return
 
@@ -45,17 +40,19 @@ async def docker_menu_command(update: Update, context: ContextTypes.DEFAULT_TYPE
         server_name = server_config.get('name', server_id.upper()) if server_config else server_id.upper()
         
         keyboard.append([
-            InlineKeyboardButton(
+            color_button(
                 f"{get_text(user_id, 'docker', 'check')} {server_name}",
-                callback_data=f"docker_check_{server_id}"
+                f"docker_check_{server_id}",
+                "primary"
             )
         ])
 
     # Кнопка проверки всех
     keyboard.append([
-        InlineKeyboardButton(
+        color_button(
             get_text(user_id, 'common', 'check_all'),
-            callback_data="docker_check_all"
+            "docker_check_all",
+            "success"
         )
     ])
 
@@ -65,25 +62,28 @@ async def docker_menu_command(update: Update, context: ContextTypes.DEFAULT_TYPE
         server_name = server_config.get('name', server_id.upper()) if server_config else server_id.upper()
         
         keyboard.append([
-            InlineKeyboardButton(
+            color_button(
                 f"{get_text(user_id, 'docker', 'restart')} {server_name}",
-                callback_data=f"docker_restart_{server_id}"
+                f"docker_restart_{server_id}",
+                "danger"
             )
         ])
 
     # Кнопка перезапуска всех
     keyboard.append([
-        InlineKeyboardButton(
+        color_button(
             get_text(user_id, 'common', 'restart_all'),
-            callback_data="docker_restart_all"
+            "docker_restart_all",
+            "danger"
         )
     ])
 
     # Кнопка назад
     keyboard.append([
-        InlineKeyboardButton(
+        color_button(
             get_text(user_id, "common", "back"),
-            callback_data="menu"
+            "menu",
+            "primary"
         )
     ])
 
@@ -130,14 +130,8 @@ async def docker_check_server(update: Update, context: ContextTypes.DEFAULT_TYPE
         error_msg = status.get('error', 'Unknown')
         text += f"{get_text(user_id, 'common', 'error')}: {error_msg}"
 
-    keyboard = [[
-        InlineKeyboardButton(
-            get_text(user_id, "common", "back"),
-            callback_data="docker"
-        )
-    ]]
-
-    await send_or_edit_message(update, text, reply_markup=InlineKeyboardMarkup(keyboard))
+    reply_markup = get_back_button(get_text, user_id, "docker")
+    await send_or_edit_message(update, text, reply_markup=reply_markup)
 
 
 async def docker_check_all(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -190,14 +184,8 @@ async def docker_check_all(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 
             text += "\n"
 
-    keyboard = [[
-        InlineKeyboardButton(
-            get_text(user_id, "common", "back"),
-            callback_data="docker"
-        )
-    ]]
-
-    await send_or_edit_message(update, text, reply_markup=InlineKeyboardMarkup(keyboard))
+    reply_markup = get_back_button(get_text, user_id, "docker")
+    await send_or_edit_message(update, text, reply_markup=reply_markup)
 
 
 async def docker_restart_server(update: Update, context: ContextTypes.DEFAULT_TYPE, server_id: str) -> None:
@@ -226,14 +214,8 @@ async def docker_restart_server(update: Update, context: ContextTypes.DEFAULT_TY
     else:
         text += f"{get_text(user_id, 'common', 'error')}: {result.get('error', 'Unknown')}\n"
 
-    keyboard = [[
-        InlineKeyboardButton(
-            get_text(user_id, "common", "back"),
-            callback_data="docker"
-        )
-    ]]
-
-    await send_or_edit_message(update, text, reply_markup=InlineKeyboardMarkup(keyboard))
+    reply_markup = get_back_button(get_text, user_id, "docker")
+    await send_or_edit_message(update, text, reply_markup=reply_markup)
 
 
 async def docker_restart_all(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -263,11 +245,5 @@ async def docker_restart_all(update: Update, context: ContextTypes.DEFAULT_TYPE)
     else:
         text += f"{get_text(user_id, 'common', 'error')}: {result.get('error', 'Unknown')}\n"
 
-    keyboard = [[
-        InlineKeyboardButton(
-            get_text(user_id, "common", "back"),
-            callback_data="docker"
-        )
-    ]]
-
-    await send_or_edit_message(update, text, reply_markup=InlineKeyboardMarkup(keyboard))
+    reply_markup = get_back_button(get_text, user_id, "docker")
+    await send_or_edit_message(update, text, reply_markup=reply_markup)

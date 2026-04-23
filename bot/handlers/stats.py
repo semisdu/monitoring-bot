@@ -9,6 +9,7 @@ from telegram.ext import ContextTypes
 
 from bot.language import get_text
 from bot.handlers.common import get_user_id, send_or_edit_message
+from bot.keyboards import get_back_button
 from config.loader import get_all_servers, get_sites, get_docker_server_ids
 from checks.site_checker import check_all_sites
 from checks.docker import check_all_docker_servers
@@ -98,9 +99,7 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         else:
             text += f"{get_text(user_id, 'common', 'no_data')}\n"
 
-        keyboard = [[InlineKeyboardButton(get_text(user_id, "common", "back"), callback_data="menu")]]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-
+        reply_markup = get_back_button(get_text, user_id, "menu")
         await send_or_edit_message(update, text, reply_markup=reply_markup)
 
     except Exception as e:
@@ -141,9 +140,7 @@ async def show_site_stats(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         else:
             text += get_text(user_id, 'common', 'no_data')
 
-        keyboard = [[InlineKeyboardButton(get_text(user_id, "common", "back"), callback_data="stats")]]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-
+        reply_markup = get_back_button(get_text, user_id, "stats")
         await send_or_edit_message(update, text, reply_markup=reply_markup)
 
     except Exception as e:
@@ -191,9 +188,7 @@ async def show_docker_stats(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         else:
             text += get_text(user_id, 'common', 'no_data')
 
-        keyboard = [[InlineKeyboardButton(get_text(user_id, "common", "back"), callback_data="stats")]]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-
+        reply_markup = get_back_button(get_text, user_id, "stats")
         await send_or_edit_message(update, text, reply_markup=reply_markup)
 
     except Exception as e:

@@ -9,6 +9,7 @@ from telegram.ext import ContextTypes
 
 from bot.language import get_text
 from bot.handlers.common import get_user_id, send_or_edit_message
+from bot.keyboards import color_button, get_back_button
 from config.loader import get_sites, get_server_config, get_server_containers
 from checks.site_checker import check_site
 from checks.docker import get_docker_status
@@ -60,8 +61,7 @@ async def site_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             text = f"*{get_text(user_id, 'sites', 'title')}:*\n\n"
             text += f"{get_text(user_id, 'common', 'no_data')}"
 
-            keyboard = [[InlineKeyboardButton(get_text(user_id, "common", "back"), callback_data="menu")]]
-            reply_markup = InlineKeyboardMarkup(keyboard)
+            reply_markup = get_back_button(get_text, user_id, "menu")
             await send_or_edit_message(update, text, reply_markup=reply_markup)
             return
 
@@ -109,9 +109,7 @@ async def site_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         total = len(sites)
         text += f"{get_text(user_id, 'stats', 'total')}: {total} {get_text(user_id, 'sites', 'title').lower()}"
 
-        keyboard = [[InlineKeyboardButton(get_text(user_id, "common", "back"), callback_data="menu")]]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-
+        reply_markup = get_back_button(get_text, user_id, "menu")
         await send_or_edit_message(update, text, reply_markup=reply_markup)
 
     except Exception as e:
@@ -147,11 +145,5 @@ async def check_site_status(update: Update, context: ContextTypes.DEFAULT_TYPE, 
     else:
         text += f"{get_text(user_id, 'common', 'error')}: {result.get('error', 'Unknown')}\n"
 
-    keyboard = [[
-        InlineKeyboardButton(
-            get_text(user_id, "common", "back"),
-            callback_data="sites"
-        )
-    ]]
-
-    await send_or_edit_message(update, text, reply_markup=InlineKeyboardMarkup(keyboard))
+    reply_markup = get_back_button(get_text, user_id, "sites")
+    await send_or_edit_message(update, text, reply_markup=reply_markup)

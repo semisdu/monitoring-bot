@@ -9,6 +9,7 @@ from telegram.ext import ContextTypes
 
 from bot.language import get_text
 from bot.handlers.common import get_user_id, send_or_edit_message
+from bot.keyboards import get_back_button
 from config.loader import (
     get_application_server_ids,
     get_server_config,
@@ -43,9 +44,8 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
                     text += format_server_status(user_id, server_id, server_info, vm_info, status_data)
                     text += "\n"
 
-        keyboard = [[InlineKeyboardButton(get_text(user_id, "common", "back"), callback_data="menu")]]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-
+        # Цветная кнопка "Назад"
+        reply_markup = get_back_button(get_text, user_id, "menu")
         await send_or_edit_message(update, text, reply_markup=reply_markup)
 
     except Exception as e:

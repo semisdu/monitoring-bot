@@ -4,11 +4,12 @@
 """
 
 import logging
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 
 from bot.language import language_manager, get_text
 from bot.handlers.common import get_user_id, send_or_edit_message
+from bot.keyboards import color_button
 
 logger = logging.getLogger(__name__)
 
@@ -33,29 +34,32 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
     text = get_text(user_id, 'start', 'welcome', name=name)
     
-    # Создаём клавиатуру с кнопками
+    # Компактная клавиатура: по 2 кнопки в ряд (новый порядок)
     keyboard = [
-        [InlineKeyboardButton(get_text(user_id, "menu", "status"), callback_data="status")],
-        [InlineKeyboardButton(get_text(user_id, "menu", "docker"), callback_data="docker")],
-        [InlineKeyboardButton(get_text(user_id, "menu", "sites"), callback_data="sites")],
         [
-            InlineKeyboardButton(get_text(user_id, "menu", "pve"), callback_data="pve_status"),
-            InlineKeyboardButton(get_text(user_id, "menu", "pbs"), callback_data="pbs_status")
+            color_button(get_text(user_id, "menu", "status"), "status", "primary"),
+            color_button(get_text(user_id, "menu", "docker"), "docker", "primary")
         ],
         [
-            InlineKeyboardButton(get_text(user_id, "menu", "alerts"), callback_data="alerts"),
-            InlineKeyboardButton(get_text(user_id, "menu", "stats"), callback_data="stats")
+            color_button(get_text(user_id, "menu", "pve"), "pve_status", "primary"),
+            color_button(get_text(user_id, "menu", "pbs"), "pbs_status", "primary")
         ],
         [
-            InlineKeyboardButton(get_text(user_id, "menu", "logs"), callback_data="logs"),
-            InlineKeyboardButton(get_text(user_id, "menu", "reports"), callback_data="report")
+            color_button(get_text(user_id, "menu", "stats"), "stats", "success"),
+            color_button(get_text(user_id, "menu", "reports"), "report", "success")
         ],
         [
-            InlineKeyboardButton(get_text(user_id, "menu", "language"), callback_data="language"),
-            InlineKeyboardButton(get_text(user_id, "menu", "donate"), callback_data="donate")
+            color_button(get_text(user_id, "menu", "sites"), "sites", "primary"),
+            color_button(get_text(user_id, "menu", "logs"), "logs", "primary")
+        ],
+        [
+            color_button(get_text(user_id, "menu", "alerts"), "alerts", "danger"),
+            color_button(get_text(user_id, "menu", "language"), "language", "primary")
+        ],
+        [
+            color_button(get_text(user_id, "menu", "donate"), "donate", "primary")
         ]
     ]
     
     reply_markup = InlineKeyboardMarkup(keyboard)
-
     await send_or_edit_message(update, text, reply_markup=reply_markup)

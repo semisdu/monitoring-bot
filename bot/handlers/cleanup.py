@@ -11,6 +11,7 @@ from telegram.ext import ContextTypes
 
 from bot.language import get_text
 from bot.handlers.common import get_user_id, send_or_edit_message
+from bot.keyboards import color_button, get_back_button
 
 logger = logging.getLogger(__name__)
 
@@ -74,13 +75,15 @@ async def cleanup_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
         keyboard = [
             [
-                InlineKeyboardButton(
+                color_button(
                     get_text(user_id, 'common', 'yes'),
-                    callback_data="cleanup_confirm"
+                    "cleanup_confirm",
+                    "danger"
                 ),
-                InlineKeyboardButton(
+                color_button(
                     get_text(user_id, 'common', 'no'),
-                    callback_data="menu"
+                    "menu",
+                    "primary"
                 )
             ]
         ]
@@ -116,14 +119,8 @@ async def cleanup_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         text += f"{get_text(user_id, 'cleanup', 'alerts_resolved')}: {stats['alerts_resolved']}\n"
         text += f"{get_text(user_id, 'logs', 'title')}: {stats['logs_rotated']}\n"
 
-        keyboard = [[
-            InlineKeyboardButton(
-                get_text(user_id, "common", "back"),
-                callback_data="menu"
-            )
-        ]]
-
-        await send_or_edit_message(update, text, reply_markup=InlineKeyboardMarkup(keyboard))
+        reply_markup = get_back_button(get_text, user_id, "menu")
+        await send_or_edit_message(update, text, reply_markup=reply_markup)
 
     except Exception as e:
         logger.error(f"Ошибка в cleanup_confirm: {e}")
@@ -141,14 +138,8 @@ async def cleanup_alerts_only(update: Update, context: ContextTypes.DEFAULT_TYPE
         text = f"*{get_text(user_id, 'cleanup', 'title')}:*\n\n"
         text += f"{get_text(user_id, 'cleanup', 'alerts_resolved')}: {count}"
 
-        keyboard = [[
-            InlineKeyboardButton(
-                get_text(user_id, "common", "back"),
-                callback_data="menu"
-            )
-        ]]
-
-        await send_or_edit_message(update, text, reply_markup=InlineKeyboardMarkup(keyboard))
+        reply_markup = get_back_button(get_text, user_id, "menu")
+        await send_or_edit_message(update, text, reply_markup=reply_markup)
 
     except Exception as e:
         logger.error(f"Ошибка в cleanup_alerts_only: {e}")
@@ -166,14 +157,8 @@ async def cleanup_logs_only(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         text = f"*{get_text(user_id, 'cleanup', 'title')}:*\n\n"
         text += f"{get_text(user_id, 'logs', 'title')}: {count}"
 
-        keyboard = [[
-            InlineKeyboardButton(
-                get_text(user_id, "common", "back"),
-                callback_data="menu"
-            )
-        ]]
-
-        await send_or_edit_message(update, text, reply_markup=InlineKeyboardMarkup(keyboard))
+        reply_markup = get_back_button(get_text, user_id, "menu")
+        await send_or_edit_message(update, text, reply_markup=reply_markup)
 
     except Exception as e:
         logger.error(f"Ошибка в cleanup_logs_only: {e}")
@@ -195,14 +180,8 @@ async def show_cleanup_stats(update: Update, context: ContextTypes.DEFAULT_TYPE)
         text += f"{get_text(user_id, 'alerts', 'title')}: 45\n"
         text += f"{get_text(user_id, 'logs', 'title')}: 12 MB\n"
 
-        keyboard = [[
-            InlineKeyboardButton(
-                get_text(user_id, "common", "back"),
-                callback_data="menu"
-            )
-        ]]
-
-        await send_or_edit_message(update, text, reply_markup=InlineKeyboardMarkup(keyboard))
+        reply_markup = get_back_button(get_text, user_id, "menu")
+        await send_or_edit_message(update, text, reply_markup=reply_markup)
 
     except Exception as e:
         logger.error(f"Ошибка в show_cleanup_stats: {e}")

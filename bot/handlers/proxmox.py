@@ -9,6 +9,7 @@ from telegram.ext import ContextTypes
 
 from bot.language import get_text
 from bot.handlers.common import get_user_id, send_or_edit_message
+from bot.keyboards import get_back_button
 from config.loader import get_pve_server_ids, get_pbs_server_ids, get_server_config, get_virtual_machines, get_backup_jobs
 
 logger = logging.getLogger(__name__)
@@ -29,8 +30,7 @@ async def pve_status_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
             text = f"*{get_text(user_id, 'pve', 'status')}:*\n\n"
             text += f"{get_text(user_id, 'pve', 'no_servers')}"
             
-            keyboard = [[InlineKeyboardButton(get_text(user_id, "common", "back"), callback_data="menu")]]
-            reply_markup = InlineKeyboardMarkup(keyboard)
+            reply_markup = get_back_button(get_text, user_id, "menu")
             await send_or_edit_message(update, text, reply_markup=reply_markup)
             return
 
@@ -90,9 +90,7 @@ async def pve_status_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
             text += "\n"
 
-        keyboard = [[InlineKeyboardButton(get_text(user_id, "common", "back"), callback_data="menu")]]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-
+        reply_markup = get_back_button(get_text, user_id, "menu")
         await send_or_edit_message(update, text, reply_markup=reply_markup)
 
     except Exception as e:
@@ -116,8 +114,7 @@ async def pbs_status_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
             text = f"*{get_text(user_id, 'pbs', 'status')}:*\n\n"
             text += f"{get_text(user_id, 'pbs', 'no_servers')}"
             
-            keyboard = [[InlineKeyboardButton(get_text(user_id, "common", "back"), callback_data="menu")]]
-            reply_markup = InlineKeyboardMarkup(keyboard)
+            reply_markup = get_back_button(get_text, user_id, "menu")
             await send_or_edit_message(update, text, reply_markup=reply_markup)
             return
 
@@ -171,9 +168,7 @@ async def pbs_status_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
             text += "\n"
 
-        keyboard = [[InlineKeyboardButton(get_text(user_id, "common", "back"), callback_data="menu")]]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-
+        reply_markup = get_back_button(get_text, user_id, "menu")
         await send_or_edit_message(update, text, reply_markup=reply_markup)
 
     except Exception as e:

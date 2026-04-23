@@ -9,6 +9,7 @@ from telegram.ext import ContextTypes
 
 from bot.language import language_manager, get_text
 from bot.handlers.common import get_user_id, send_or_edit_message
+from bot.keyboards import color_button
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +64,7 @@ async def donate_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             "• BTC: `bc1q9rjhewccuzhj2drga3gqmrqjdfc362xjsa6hwy`\n\n"
         )
     
-    keyboard = [[InlineKeyboardButton("🔙 Назад", callback_data="menu")]]
+    keyboard = [[color_button("🔙 Назад", "menu", "primary")]]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
     await send_or_edit_message(update, text, reply_markup=reply_markup)

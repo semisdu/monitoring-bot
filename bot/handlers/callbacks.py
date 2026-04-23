@@ -48,6 +48,8 @@ from .report import (
     resolve_all_errors,
     resolve_error_callback
 )
+from bot.keyboards import color_button, get_back_button
+
 logger = logging.getLogger(__name__)
 
 
@@ -182,8 +184,8 @@ async def show_app_servers_status(update: Update, context: ContextTypes.DEFAULT_
         text = f"*{get_text(user_id, 'status', 'title')}:*\n\n"
         text += f"{get_text(user_id, 'common', 'no_servers')}"
         
-        keyboard = [[InlineKeyboardButton(get_text(user_id, "common", "back"), callback_data="menu")]]
-        await send_or_edit_message(update, text, reply_markup=InlineKeyboardMarkup(keyboard))
+        reply_markup = get_back_button(get_text, user_id, "menu")
+        await send_or_edit_message(update, text, reply_markup=reply_markup)
         return
     
     await status_command(update, context)
@@ -199,8 +201,8 @@ async def show_virtual_machines_status(update: Update, context: ContextTypes.DEF
         text = f"*{get_text(user_id, 'status', 'title')}:*\n\n"
         text += f"{get_text(user_id, 'common', 'no_vms')}"
         
-        keyboard = [[InlineKeyboardButton(get_text(user_id, "common", "back"), callback_data="menu")]]
-        await send_or_edit_message(update, text, reply_markup=InlineKeyboardMarkup(keyboard))
+        reply_markup = get_back_button(get_text, user_id, "menu")
+        await send_or_edit_message(update, text, reply_markup=reply_markup)
         return
     
     await status_command(update, context)
@@ -213,16 +215,18 @@ async def show_language_menu(update: Update, context: ContextTypes.DEFAULT_TYPE)
     keyboard = []
     for lang_code, lang_name in LANGUAGE_NAMES.items():
         keyboard.append([
-            InlineKeyboardButton(
+            color_button(
                 lang_name,
-                callback_data=f"set_lang_{lang_code}"
+                f"set_lang_{lang_code}",
+                "primary"
             )
         ])
 
     keyboard.append([
-        InlineKeyboardButton(
+        color_button(
             get_text(user_id, "common", "back"),
-            callback_data="menu"
+            "menu",
+            "primary"
         )
     ])
 
@@ -238,15 +242,11 @@ async def set_language(update: Update, context: ContextTypes.DEFAULT_TYPE, lang_
     user_id = get_user_id(update)
     language_manager.set_user_language(user_id, lang_code)
 
+    reply_markup = get_back_button(get_text, user_id, "menu")
     await send_or_edit_message(
         update,
         f"{get_text(user_id, 'language', 'changed')}",
-        reply_markup=InlineKeyboardMarkup([[
-            InlineKeyboardButton(
-                get_text(user_id, "common", "back"),
-                callback_data="menu"
-            )
-        ]])
+        reply_markup=reply_markup
     )
 
 
@@ -263,15 +263,11 @@ async def check_server_status(update: Update, context: ContextTypes.DEFAULT_TYPE
     server_config = get_server_config(server_id)
 
     if not server_config:
+        reply_markup = get_back_button(get_text, user_id, "status")
         await send_or_edit_message(
             update,
             f"{get_text(user_id, 'common', 'error')}: {get_text(user_id, 'common', 'no_servers')}",
-            reply_markup=InlineKeyboardMarkup([[
-                InlineKeyboardButton(
-                    get_text(user_id, "common", "back"),
-                    callback_data="status"
-                )
-            ]])
+            reply_markup=reply_markup
         )
         return
 
@@ -297,14 +293,8 @@ async def check_server_status(update: Update, context: ContextTypes.DEFAULT_TYPE
         text += f"{get_text(user_id, 'status', 'offline')}\n"
         text += f"{get_text(user_id, 'common', 'error')}: {result.get('error', 'Unknown')}"
 
-    keyboard = [[
-        InlineKeyboardButton(
-            get_text(user_id, "common", "back"),
-            callback_data="status"
-        )
-    ]]
-
-    await send_or_edit_message(update, text, reply_markup=InlineKeyboardMarkup(keyboard))
+    reply_markup = get_back_button(get_text, user_id, "status")
+    await send_or_edit_message(update, text, reply_markup=reply_markup)
 
 
 def register_handlers(application):

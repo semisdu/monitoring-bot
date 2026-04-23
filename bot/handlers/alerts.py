@@ -11,6 +11,7 @@ from telegram.ext import ContextTypes
 
 from bot.language import get_text
 from bot.handlers.common import get_user_id, send_or_edit_message
+from bot.keyboards import color_button, get_back_button
 
 logger = logging.getLogger(__name__)
 
@@ -101,21 +102,23 @@ async def alerts_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             if len(active_alerts) > 10:
                 text += f"... {get_text(user_id, 'common', 'and_more')} {len(active_alerts) - 10}\n\n"
 
-        # Кнопки управления
+        # Цветные кнопки управления
         keyboard = []
         
         if active_alerts:
             keyboard.append([
-                InlineKeyboardButton(
+                color_button(
                     get_text(user_id, 'alerts', 'clear_all'),
-                    callback_data="alerts_clear_all"
+                    "alerts_clear_all",
+                    "danger"
                 )
             ])
         
         keyboard.append([
-            InlineKeyboardButton(
+            color_button(
                 get_text(user_id, "common", "back"),
-                callback_data="menu"
+                "menu",
+                "primary"
             )
         ])
 
@@ -139,14 +142,8 @@ async def clear_all_alerts(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         text += f"{get_text(user_id, 'alerts', 'clear_all')}\n"
         text += f"{get_text(user_id, 'stats', 'total')}: {count}"
 
-        keyboard = [[
-            InlineKeyboardButton(
-                get_text(user_id, "common", "back"),
-                callback_data="alerts"
-            )
-        ]]
-
-        await send_or_edit_message(update, text, reply_markup=InlineKeyboardMarkup(keyboard))
+        reply_markup = get_back_button(get_text, user_id, "alerts")
+        await send_or_edit_message(update, text, reply_markup=reply_markup)
 
     except Exception as e:
         logger.error(f"Ошибка в clear_all_alerts: {e}")
@@ -192,20 +189,23 @@ async def show_alert_details(update: Update, context: ContextTypes.DEFAULT_TYPE,
 
         keyboard = [
             [
-                InlineKeyboardButton(
+                color_button(
                     get_text(user_id, 'alerts', 'clear'),
-                    callback_data=f"alert_resolve_{alert_id}"
+                    f"alert_resolve_{alert_id}",
+                    "danger"
                 )
             ],
             [
-                InlineKeyboardButton(
+                color_button(
                     get_text(user_id, "common", "back"),
-                    callback_data="alerts"
+                    "alerts",
+                    "primary"
                 )
             ]
         ]
 
-        await send_or_edit_message(update, text, reply_markup=InlineKeyboardMarkup(keyboard))
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await send_or_edit_message(update, text, reply_markup=reply_markup)
 
     except Exception as e:
         logger.error(f"Ошибка в show_alert_details: {e}")
@@ -224,14 +224,8 @@ async def resolve_alert_callback(update: Update, context: ContextTypes.DEFAULT_T
         else:
             text = f"{get_text(user_id, 'common', 'error')}: {get_text(user_id, 'common', 'no_data')}"
 
-        keyboard = [[
-            InlineKeyboardButton(
-                get_text(user_id, "common", "back"),
-                callback_data="alerts"
-            )
-        ]]
-
-        await send_or_edit_message(update, text, reply_markup=InlineKeyboardMarkup(keyboard))
+        reply_markup = get_back_button(get_text, user_id, "alerts")
+        await send_or_edit_message(update, text, reply_markup=reply_markup)
 
     except Exception as e:
         logger.error(f"Ошибка в resolve_alert_callback: {e}")

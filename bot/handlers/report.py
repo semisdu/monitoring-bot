@@ -10,6 +10,7 @@ from telegram.ext import ContextTypes
 
 from bot.language import get_text
 from bot.handlers.common import get_user_id, send_or_edit_message
+from bot.keyboards import color_button, get_back_button
 from bot.notifications import send_daily_report, send_test
 from analytics.error_analyzer import get_current_problems, get_trends, resolve_error
 
@@ -25,33 +26,38 @@ async def report_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
     keyboard = [
         [
-            InlineKeyboardButton(
+            color_button(
                 get_text(user_id, 'report', 'now'),
-                callback_data="report_now"
+                "report_now",
+                "success"
             )
         ],
         [
-            InlineKeyboardButton(
+            color_button(
                 get_text(user_id, 'trends', 'title'),
-                callback_data="show_trends"
+                "show_trends",
+                "primary"
             )
         ],
         [
-            InlineKeyboardButton(
+            color_button(
                 get_text(user_id, 'alerts', 'title'),
-                callback_data="show_active_problems"
+                "show_active_problems",
+                "danger"
             )
         ],
         [
-            InlineKeyboardButton(
+            color_button(
                 get_text(user_id, 'report', 'test'),
-                callback_data="report_test"
+                "report_test",
+                "primary"
             )
         ],
         [
-            InlineKeyboardButton(
+            color_button(
                 get_text(user_id, "common", "back"),
-                callback_data="menu"
+                "menu",
+                "primary"
             )
         ]
     ]
@@ -78,33 +84,38 @@ async def report_now(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 
         keyboard = [
             [
-                InlineKeyboardButton(
+                color_button(
                     get_text(user_id, 'report', 'now'),
-                    callback_data="report_now"
+                    "report_now",
+                    "success"
                 )
             ],
             [
-                InlineKeyboardButton(
+                color_button(
                     get_text(user_id, 'trends', 'title'),
-                    callback_data="show_trends"
+                    "show_trends",
+                    "primary"
                 )
             ],
             [
-                InlineKeyboardButton(
+                color_button(
                     get_text(user_id, 'alerts', 'title'),
-                    callback_data="show_active_problems"
+                    "show_active_problems",
+                    "danger"
                 )
             ],
             [
-                InlineKeyboardButton(
+                color_button(
                     get_text(user_id, 'report', 'test'),
-                    callback_data="report_test"
+                    "report_test",
+                    "primary"
                 )
             ],
             [
-                InlineKeyboardButton(
+                color_button(
                     get_text(user_id, "common", "back"),
-                    callback_data="menu"
+                    "menu",
+                    "primary"
                 )
             ]
         ]
@@ -158,19 +169,13 @@ async def show_trends(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         if problems:
             text += f"*{get_text(user_id, 'analytics', 'daily_report_active')}:*\n"
             for p in problems:
-                severity_icon = "🚨" if p['severity'] == 'critical' else "⚠️"
+                severity_icon = "🚨" if p['severity'] == 'critical' else "⚠"
                 error_type_key = f"error_types_{p['error_type']}"
                 error_type = get_text(user_id, 'analytics', error_type_key)
                 text += f"{severity_icon} {error_type} (x{p['occurrence_count']})\n"
 
-        keyboard = [[
-            InlineKeyboardButton(
-                get_text(user_id, "common", "back"),
-                callback_data="report"
-            )
-        ]]
-
-        await send_or_edit_message(update, text, reply_markup=InlineKeyboardMarkup(keyboard))
+        reply_markup = get_back_button(get_text, user_id, "report")
+        await send_or_edit_message(update, text, reply_markup=reply_markup)
 
     except Exception as e:
         logger.error(f"Ошибка при показе трендов: {e}")
@@ -193,7 +198,7 @@ async def show_active_problems(update: Update, context: ContextTypes.DEFAULT_TYP
             text += get_text(user_id, 'alerts', 'no_alerts')
         else:
             for i, p in enumerate(problems, 1):
-                severity_icon = "🚨" if p['severity'] == 'critical' else "⚠️"
+                severity_icon = "🚨" if p['severity'] == 'critical' else "⚠"
                 error_type_key = f"error_types_{p['error_type']}"
                 error_type = get_text(user_id, 'analytics', error_type_key)
 
@@ -214,38 +219,43 @@ async def show_active_problems(update: Update, context: ContextTypes.DEFAULT_TYP
             if len(problems) == 1:
                 keyboard = [
                     [
-                        InlineKeyboardButton(
+                        color_button(
                             get_text(user_id, 'alerts', 'clear'),
-                            callback_data=f"resolve_error_{problems[0]['id']}"
+                            f"resolve_error_{problems[0]['id']}",
+                            "danger"
                         )
                     ],
                     [
-                        InlineKeyboardButton(
+                        color_button(
                             get_text(user_id, "common", "back"),
-                            callback_data="report"
+                            "report",
+                            "primary"
                         )
                     ]
                 ]
             else:
                 keyboard = [
                     [
-                        InlineKeyboardButton(
+                        color_button(
                             get_text(user_id, 'alerts', 'clear_all'),
-                            callback_data="resolve_all_errors"
+                            "resolve_all_errors",
+                            "danger"
                         )
                     ],
                     [
-                        InlineKeyboardButton(
+                        color_button(
                             get_text(user_id, "common", "back"),
-                            callback_data="report"
+                            "report",
+                            "primary"
                         )
                     ]
                 ]
         else:
             keyboard = [[
-                InlineKeyboardButton(
+                color_button(
                     get_text(user_id, "common", "back"),
-                    callback_data="report"
+                    "report",
+                    "primary"
                 )
             ]]
 
@@ -299,33 +309,38 @@ async def resolve_all_errors(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
         keyboard = [
             [
-                InlineKeyboardButton(
+                color_button(
                     get_text(user_id, 'report', 'now'),
-                    callback_data="report_now"
+                    "report_now",
+                    "success"
                 )
             ],
             [
-                InlineKeyboardButton(
+                color_button(
                     get_text(user_id, 'trends', 'title'),
-                    callback_data="show_trends"
+                    "show_trends",
+                    "primary"
                 )
             ],
             [
-                InlineKeyboardButton(
+                color_button(
                     get_text(user_id, 'alerts', 'title'),
-                    callback_data="show_active_problems"
+                    "show_active_problems",
+                    "danger"
                 )
             ],
             [
-                InlineKeyboardButton(
+                color_button(
                     get_text(user_id, 'report', 'test'),
-                    callback_data="report_test"
+                    "report_test",
+                    "primary"
                 )
             ],
             [
-                InlineKeyboardButton(
+                color_button(
                     get_text(user_id, "common", "back"),
-                    callback_data="menu"
+                    "menu",
+                    "primary"
                 )
             ]
         ]
@@ -362,7 +377,7 @@ async def report_test(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         if result:
             result_text = get_text(user_id, 'notifications', 'test_success')
         else:
-            result_text = f"⚠️ {get_text(user_id, 'notifications', 'test_fail')}\n\nВозможно, сработал кулдаун. Подождите 30 минут."
+            result_text = f"⚠ {get_text(user_id, 'notifications', 'test_fail')}\n\nВозможно, сработал кулдаун. Подождите 30 минут."
         
         # Показываем результат и меню отчётов с кнопкой "Назад"
         final_text = f"*{get_text(user_id, 'report', 'title')}:*\n\n"
@@ -371,33 +386,38 @@ async def report_test(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         
         keyboard = [
             [
-                InlineKeyboardButton(
+                color_button(
                     get_text(user_id, 'report', 'now'),
-                    callback_data="report_now"
+                    "report_now",
+                    "success"
                 )
             ],
             [
-                InlineKeyboardButton(
+                color_button(
                     get_text(user_id, 'trends', 'title'),
-                    callback_data="show_trends"
+                    "show_trends",
+                    "primary"
                 )
             ],
             [
-                InlineKeyboardButton(
+                color_button(
                     get_text(user_id, 'alerts', 'title'),
-                    callback_data="show_active_problems"
+                    "show_active_problems",
+                    "danger"
                 )
             ],
             [
-                InlineKeyboardButton(
+                color_button(
                     get_text(user_id, 'report', 'test'),
-                    callback_data="report_test"
+                    "report_test",
+                    "primary"
                 )
             ],
             [
-                InlineKeyboardButton(
+                color_button(
                     get_text(user_id, "common", "back"),
-                    callback_data="menu"
+                    "menu",
+                    "primary"
                 )
             ]
         ]
