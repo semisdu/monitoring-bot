@@ -60,7 +60,8 @@ class MonitoringScheduler:
                 name="server_status_check",
                 func=self._check_servers_status,
                 cron=self.schedule_config.get('status_check', '*/5 * * * *'),
-                description="Проверка статуса серверов"
+                description="Проверка статуса серверов",
+                priority=5
             )
 
         # Проверка Docker
@@ -69,7 +70,8 @@ class MonitoringScheduler:
                 name="docker_check",
                 func=self._check_docker,
                 cron=self.schedule_config.get('docker_check', '*/10 * * * *'),
-                description="Проверка Docker контейнеров"
+                description="Проверка Docker контейнеров",
+                priority=5
             )
 
         # Проверка логов
@@ -78,7 +80,8 @@ class MonitoringScheduler:
                 name="log_check",
                 func=self._check_logs,
                 cron=self.schedule_config.get('log_check', '*/5 * * * *'),
-                description="Проверка логов"
+                description="Проверка логов",
+                priority=5
             )
 
         # Проверка логов контейнеров
@@ -87,7 +90,8 @@ class MonitoringScheduler:
                 name="container_log_check",
                 func=self._check_container_logs,
                 cron=self.schedule_config.get('log_check', '*/5 * * * *'),
-                description="Проверка логов контейнеров"
+                description="Проверка логов контейнеров",
+                priority=5
             )
 
         # Проверка PVE
@@ -95,8 +99,9 @@ class MonitoringScheduler:
             self._add_job(
                 name="pve_check",
                 func=self._check_pve,
-                cron=self.schedule_config.get('vm_check', '0 */1 * * *'),
-                description="Проверка PVE VM"
+                cron=self.schedule_config.get('vm_check', '*/5 * * * *'),  # Исправлено: проверка каждые 5 минут вместо часа
+                description="Проверка PVE VM",
+                priority=5
             )
 
         # Проверка PBS
@@ -105,7 +110,8 @@ class MonitoringScheduler:
                 name="pbs_check",
                 func=self._check_pbs,
                 cron=self.schedule_config.get('backup_check', '0 6 * * *'),
-                description="Проверка PBS бэкапов"
+                description="Проверка PBS бэкапов",
+                priority=5
             )
 
         # Проверка сайтов
@@ -114,10 +120,11 @@ class MonitoringScheduler:
                 name="site_check",
                 func=self._check_sites,
                 cron=self.schedule_config.get('site_check', '*/15 * * * *'),
-                description="Проверка сайтов"
+                description="Проверка сайтов",
+                priority=5
             )
 
-        # Ежедневный отчёт
+        # Ежедневный отчёт (высокий приоритет) - только одна задача, без дубля
         if self.notifications_config.get('daily_report', {}).get('enabled', True):
             report_time = self.notifications_config.get('daily_report', {}).get('time', '09:00')
             hour, minute = map(int, report_time.split(':'))
@@ -125,28 +132,18 @@ class MonitoringScheduler:
                 name="daily_report",
                 func=self._send_daily_report,
                 cron=f"{minute} {hour} * * *",
-                description="Ежедневный отчёт"
+                description="Ежедневный отчёт",
+                priority=10
             )
-            
-            # Задача-дублёр для проверки пропущенного отчёта (через 5 минут после основного времени)
-            check_hour = hour
-            check_minute = minute + 5
-            if check_minute >= 60:
-                check_minute -= 60
-                check_hour += 1
-            self._add_job(
-                name="missed_report_check",
-                func=self._check_missed_report,
-                cron=f"{check_minute} {check_hour} * * *",
-                description="Проверка пропущенного ежедневного отчёта"
-            )
+            # Исправлено: удалена задача missed_report_check, которая дублировала отчёт
 
         # Аналитика трендов (каждые 6 часов)
         self._add_job(
             name="trends_analysis",
             func=self._analyze_trends,
             cron="0 */6 * * *",
-            description="Анализ трендов ошибок"
+            description="Анализ трендов ошибок",
+            priority=3
         )
 
         # Очистка старых данных (каждую неделю)
@@ -155,21 +152,30 @@ class MonitoringScheduler:
                 name="cleanup_old_data",
                 func=self._cleanup_old_data,
                 cron=self.schedule_config.get('cleanup', '0 2 * * 1'),
-                description="Очистка старых данных"
+                description="Очистка старых данных",
+                priority=2
             )
 
         logger.info(f"Настроено {len(self.jobs)} запланированных задач")
 
-    def _add_job(self, name: str, func: Callable, cron: str, description: str) -> None:
+    def _add_job(self, name: str, func: Callable, cron: str, description: str, priority: int = 5) -> None:
         try:
             trigger = CronTrigger.from_crontab(cron)
-            job = self.scheduler.add_job(func, trigger, id=name)
+            job = self.scheduler.add_job(
+                func, 
+                trigger, 
+                id=name, 
+                misfire_grace_time=300,  # 5 минут на выполнение пропущенной задачи
+                priority=priority,
+                coalesce=True  # Объединять несколько пропущенных запусков в один
+            )
             self.jobs[name] = {
                 'job': job,
                 'description': description,
-                'cron': cron
+                'cron': cron,
+                'priority': priority
             }
-            logger.info(f"Задача '{name}' добавлена: {description} ({cron})")
+            logger.info(f"Задача '{name}' добавлена: {description} ({cron}), приоритет {priority}")
         except Exception as e:
             logger.error(f"Ошибка добавления задачи {name}: {e}")
 
@@ -287,28 +293,6 @@ class MonitoringScheduler:
             logger.info(f"Ежедневный отчёт отправлен по расписанию, флаг установлен на {today}")
         except Exception as e:
             logger.error(f"Ошибка отправки ежедневного отчёта: {e}")
-
-    async def _check_missed_report(self) -> None:
-        """Проверить, был ли отправлен отчёт сегодня, если нет — отправить."""
-        logger.info("Проверка пропущенного ежедневного отчёта...")
-        try:
-            today = datetime.now().strftime('%Y-%m-%d')
-            
-            last_sent = None
-            if os.path.exists(self.report_flag_file):
-                with open(self.report_flag_file, 'r') as f:
-                    last_sent = f.read().strip()
-            
-            if last_sent != today:
-                logger.info(f"Отчёт за {today} не отправлен. Отправляю...")
-                await send_daily_report()
-                with open(self.report_flag_file, 'w') as f:
-                    f.write(today)
-                logger.info(f"Пропущенный отчёт за {today} отправлен")
-            else:
-                logger.info(f"Отчёт за {today} уже был отправлен ранее")
-        except Exception as e:
-            logger.error(f"Ошибка при проверке пропущенного отчёта: {e}")
 
     async def _analyze_trends(self) -> None:
         logger.info("Анализ трендов ошибок...")

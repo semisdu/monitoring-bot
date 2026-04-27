@@ -85,7 +85,8 @@ class ContainerLogMonitor:
         cmd = f"docker logs --tail {DEFAULT_LOG_LINES} {container_name} 2>&1"
 
         try:
-            result = ssh.execute_command(cmd)
+            # Асинхронний виклик SSH команди
+            result = await asyncio.to_thread(ssh.execute_command, cmd)
 
             if not result or "Error: No such container" in result:
                 logger.error(f"Контейнер {container_name} не знайдено на {server_id}")
@@ -134,7 +135,7 @@ class ContainerLogMonitor:
 
             # Отримуємо іконку для цього типу помилки
             icon_key = self._get_icon_key(pattern)
-            icon = get_text(ADMIN_USER_ID, 'container_logs', 'icons', icon_key)
+            icon = get_text(ADMIN_USER_ID, 'container_logs', 'icons', key=icon_key)
 
             # Формуємо повідомлення
             error_text = match.group(0) if match.groups() else pattern
@@ -149,11 +150,11 @@ class ContainerLogMonitor:
             container_type_name = container_config.get('name', 'Unknown')
 
             alert_text = (
-                f"{get_text(ADMIN_USER_ID, 'container_logs', 'messages', 'error_found')}\n"
-                f"{get_text(ADMIN_USER_ID, 'container_logs', 'messages', 'container')}: `{container_name}`\n"
-                f"{get_text(ADMIN_USER_ID, 'container_logs', 'messages', 'server')}: {server_name}\n"
-                f"{get_text(ADMIN_USER_ID, 'container_logs', 'messages', 'type')}: {container_type_name}\n"
-                f"{get_text(ADMIN_USER_ID, 'container_logs', 'messages', 'error')}: {icon} {message}\n"
+                f"{get_text(ADMIN_USER_ID, 'container_logs', 'messages', key='error_found')}\n"
+                f"{get_text(ADMIN_USER_ID, 'container_logs', 'messages', key='container')}: `{container_name}`\n"
+                f"{get_text(ADMIN_USER_ID, 'container_logs', 'messages', key='server')}: {server_name}\n"
+                f"{get_text(ADMIN_USER_ID, 'container_logs', 'messages', key='type')}: {container_type_name}\n"
+                f"{get_text(ADMIN_USER_ID, 'container_logs', 'messages', key='error')}: {icon} {message}\n"
                 f"```\n{short_line}\n```"
             )
 

@@ -16,13 +16,15 @@ from config.loader import (
     get_virtual_machines,
     get_server_config,
     get_alert_config,
-    get_pve_server_ids
+    get_pve_server_ids,
+    get_full_ssh_key_path
 )
-from utils.ssh import SSHClient
+from utils.ssh import get_ssh_client  # Используем новый адаптер
 
 logger = logging.getLogger(__name__)
 
-_alert_cache: Dict[str, datetime] = {}
+# Кэш для алертов с учётом статуса VM
+_alert_cache: Dict[str, Dict[str, Any]] = {}
 
 
 class PVEMonitor:
@@ -44,7 +46,15 @@ class PVEMonitor:
         self.pve_servers: List[str] = get_pve_server_ids()
         self.pve_host: Optional[str] = self.pve_servers[0] if self.pve_servers else None
         
-        self.alert_cooldown_minutes: int = 30
+        self.alert_cooldown_minutes: int = 1440  # 24 часа - не спамить повторно
+        self.ssh_clients: Dict[str, Any] = {}  # Кэш SSH клиентов по серверам
+
+    def _get_ssh_client(self, server_id: str):
+        """Получить SSH клиент из кэша (использует пул через адаптер)"""
+        if server_id not in self.ssh_clients:
+            self.ssh_clients[server_id] = get_ssh_client(server_id)
+            logger.debug(f"Получен SSH клиент для {server_id}")
+        return self.ssh_clients[server_id]
 
     async def check_all_vms(self) -> None:
         """
@@ -78,27 +88,76 @@ class PVEMonitor:
         name: str = vm.get("name", f"VM-{vmid}")
         vm_id: str = vm.get("id", f"vm{vmid}")
 
-        ssh = SSHClient(self.pve_host)
-        command: str = f"qm status {vmid} 2>/dev/null | grep status | awk '{{print $2}}'"
+        ssh = self._get_ssh_client(self.pve_host)
+        # Исправлена команда: теперь точно получаем статус
+        command: str = f"sudo qm status {vmid} 2>/dev/null | awk '{{print $2}}'"
 
         try:
             result: str = ssh.execute_command(command).strip()
-
+            
+            # Если результат пустой - VM не существует или команда не сработала
+            if not result:
+                logger.warning(f"Не удалось получить статус VM {vmid}, результат пустой")
+                result = "unknown"
+            
+            logger.debug(f"VM {vmid} статус: '{result}'")
+            
             if result != "running":
                 await self._handle_vm_stopped(vmid, name, result, vm_id)
+            else:
+                # VM работает - проверяем, был ли ранее алерт о её остановке
+                await self._handle_vm_resolved(vmid, name, vm_id)
 
         except Exception as error:
             logger.error(f"Помилка перевірки статусу VM {vmid}: {error}")
 
+    async def _handle_vm_resolved(self, vmid: int, name: str, vm_id: str) -> None:
+        """
+        Обработать восстановление VM (отправить уведомление о решении проблемы).
+        """
+        cache_key: str = f"vm_status_{vm_id}"
+        
+        if cache_key in _alert_cache and _alert_cache[cache_key].get('status') != 'running':
+            # Был ранее алерт об остановке - отправляем уведомление о восстановлении
+            await self._send_alert(
+                f"✅ *VM відновлено!*\n"
+                f"Назва: {name}\n"
+                f"VM ID: {vmid}\n"
+                f"Статус: `running`\n"
+                f"Сервер: {self.pve_host}"
+            )
+            _alert_cache[cache_key] = {
+                'last_sent': datetime.now(),
+                'status': 'running',
+                'resolved': True
+            }
+            logger.info(f"VM {name} восстановлена, уведомление отправлено")
+
     async def _handle_vm_stopped(self, vmid: int, name: str, status: str, vm_id: str) -> None:
         """
-        Обработать остановленную VM.
+        Обработать остановленную VM с дедупликацией.
         """
         cache_key: str = f"vm_status_{vm_id}"
         now: datetime = datetime.now()
-        cooldown = timedelta(minutes=self.alert_cooldown_minutes)
-
-        if cache_key not in _alert_cache or now - _alert_cache[cache_key] > cooldown:
+        
+        # Проверяем, нужно ли отправить алерт
+        should_alert = False
+        
+        if cache_key not in _alert_cache:
+            # Первый раз - отправляем
+            should_alert = True
+        else:
+            cached = _alert_cache[cache_key]
+            last_status = cached.get('status')
+            last_sent = cached.get('last_sent')
+            
+            # Отправляем если: статус изменился ИЛИ прошло больше cooldown
+            if last_status != status:
+                should_alert = True
+            elif last_sent and (now - last_sent).total_seconds() > self.alert_cooldown_minutes * 60:
+                should_alert = True
+        
+        if should_alert:
             await self._send_alert(
                 f"🚨 *Помилка: VM зупинено!*\n"
                 f"Назва: {name}\n"
@@ -106,7 +165,14 @@ class PVEMonitor:
                 f"Статус: `{status}`\n"
                 f"Сервер: {self.pve_host}"
             )
-            _alert_cache[cache_key] = now
+            _alert_cache[cache_key] = {
+                'last_sent': now,
+                'status': status,
+                'resolved': False
+            }
+            logger.info(f"Алерт о остановке VM {name} отправлен (статус: {status})")
+        else:
+            logger.debug(f"Пропускаем дублирующий алерт для VM {name} (статус: {status})")
 
     async def _check_vm_resources(self, vm: Dict[str, Any]) -> None:
         """
@@ -116,7 +182,7 @@ class PVEMonitor:
         name: str = vm.get("name", f"VM-{vmid}")
         vm_id: str = vm.get("id", f"vm{vmid}")
 
-        ssh = SSHClient(self.pve_host)
+        ssh = self._get_ssh_client(self.pve_host)
         command: str = f"pvesh get /nodes/localhost/qemu/{vmid}/status/current --output-format json"
 
         try:
@@ -149,20 +215,23 @@ class PVEMonitor:
         cooldown = timedelta(minutes=self.alert_cooldown_minutes)
 
         if cpu_usage > self.cpu_critical_threshold:
-            await self._send_alert(
-                f"🚨 *Критична нагрузка CPU!*\n"
-                f"VM: {name} (ID: {vmid})\n"
-                f"CPU: {cpu_usage:.1f}%"
-            )
-        elif cpu_usage > self.cpu_warning_threshold:
-            cache_key: str = f"cpu_warn_{vm_id}"
-            if cache_key not in _alert_cache or now - _alert_cache[cache_key] > cooldown:
+            cache_key: str = f"cpu_crit_{vm_id}"
+            if cache_key not in _alert_cache or now - _alert_cache.get(cache_key, {}).get('last_sent', datetime.min) > cooldown:
                 await self._send_alert(
-                    f"⚠️ *Висока нагрузка CPU*\n"
+                    f"🚨 *Критична нагрузка CPU!*\n"
                     f"VM: {name} (ID: {vmid})\n"
                     f"CPU: {cpu_usage:.1f}%"
                 )
-                _alert_cache[cache_key] = now
+                _alert_cache[cache_key] = {'last_sent': now, 'value': cpu_usage}
+        elif cpu_usage > self.cpu_warning_threshold:
+            cache_key: str = f"cpu_warn_{vm_id}"
+            if cache_key not in _alert_cache or now - _alert_cache.get(cache_key, {}).get('last_sent', datetime.min) > cooldown:
+                await self._send_alert(
+                    f"⚠ *Висока нагрузка CPU*\n"
+                    f"VM: {name} (ID: {vmid})\n"
+                    f"CPU: {cpu_usage:.1f}%"
+                )
+                _alert_cache[cache_key] = {'last_sent': now, 'value': cpu_usage}
 
     async def _check_ram_usage(self, vmid: int, name: str, mem_percent: float, vm_id: str) -> None:
         """
@@ -172,20 +241,23 @@ class PVEMonitor:
         cooldown = timedelta(minutes=self.alert_cooldown_minutes)
 
         if mem_percent > self.ram_critical_threshold:
-            await self._send_alert(
-                f"🚨 *Критично мало RAM!*\n"
-                f"VM: {name} (ID: {vmid})\n"
-                f"RAM: {mem_percent:.1f}% використано"
-            )
-        elif mem_percent > self.ram_warning_threshold:
-            cache_key: str = f"ram_warn_{vm_id}"
-            if cache_key not in _alert_cache or now - _alert_cache[cache_key] > cooldown:
+            cache_key: str = f"ram_crit_{vm_id}"
+            if cache_key not in _alert_cache or now - _alert_cache.get(cache_key, {}).get('last_sent', datetime.min) > cooldown:
                 await self._send_alert(
-                    f"⚠️ *Мало RAM*\n"
+                    f"🚨 *Критично мало RAM!*\n"
                     f"VM: {name} (ID: {vmid})\n"
                     f"RAM: {mem_percent:.1f}% використано"
                 )
-                _alert_cache[cache_key] = now
+                _alert_cache[cache_key] = {'last_sent': now, 'value': mem_percent}
+        elif mem_percent > self.ram_warning_threshold:
+            cache_key: str = f"ram_warn_{vm_id}"
+            if cache_key not in _alert_cache or now - _alert_cache.get(cache_key, {}).get('last_sent', datetime.min) > cooldown:
+                await self._send_alert(
+                    f"⚠ *Мало RAM*\n"
+                    f"VM: {name} (ID: {vmid})\n"
+                    f"RAM: {mem_percent:.1f}% використано"
+                )
+                _alert_cache[cache_key] = {'last_sent': now, 'value': mem_percent}
 
     async def _send_alert(self, message: str) -> None:
         """

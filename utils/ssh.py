@@ -212,3 +212,98 @@ class SSHClient:
                 pass
             self.client = None
             self.connected = False
+
+# ============================================
+# Адаптер для использования SSH пула
+# ============================================
+
+from utils.ssh_pool import ssh_pool
+from pathlib import Path
+
+def get_ssh_client(server_id: str):
+    """
+    Получить SSH клиент с использованием пула соединений.
+    Если пул недоступен - возвращает обычный SSHClient.
+    """
+    try:
+        from config.loader import get_server_config, get_full_ssh_key_path
+        
+        server_config = get_server_config(server_id)
+        if not server_config:
+            logger.warning(f"Сервер {server_id} не найден в конфиге, использую fallback")
+            return SSHClient(server_id)
+        
+        host = server_config.get('host') or server_config.get('ip')
+        user = server_config.get('user', 'semis')
+        port = server_config.get('port', 22)
+        key_name = server_config.get('ssh_key')
+        
+        if not host:
+            logger.warning(f"Для сервера {server_id} нет host/ip, использую fallback")
+            return SSHClient(server_id)
+        
+        if key_name:
+            key_path = get_full_ssh_key_path(key_name)
+            if key_path and Path(key_path).exists():
+                client = ssh_pool.get_connection(host, user, port, Path(key_path))
+                if client:
+                    logger.debug(f"SSH пул: получено соединение для {server_id}")
+                    # Оборачиваем paramiko клиент в адаптер с тем же интерфейсом
+                    return _ParamikoClientAdapter(client, server_id)
+        
+        # Fallback на старый SSHClient
+        logger.debug(f"SSH пул недоступен для {server_id}, использую SSHClient")
+        return SSHClient(server_id)
+        
+    except Exception as e:
+        logger.warning(f"Ошибка при использовании SSH пула для {server_id}: {e}")
+        return SSHClient(server_id)
+
+
+class _ParamikoClientAdapter:
+    """
+    Адаптер для paramiko клиента, чтобы он имел тот же интерфейс, что и SSHClient.
+    """
+    
+    def __init__(self, client, server_id: str):
+        self.client = client
+        self.server_id = server_id
+        self.connected = True
+    
+    def execute_command(self, command: str, timeout: int = 30) -> str:
+        """Выполнить команду через paramiko клиент."""
+        try:
+            stdin, stdout, stderr = self.client.exec_command(command, timeout=timeout)
+            output = stdout.read().decode('utf-8').strip()
+            error = stderr.read().decode('utf-8').strip()
+            
+            if error:
+                logger.debug(f"Stderr от {self.server_id}: {error}")
+            
+            return output if output else error
+            
+        except Exception as e:
+            logger.error(f"Ошибка выполнения команды на {self.server_id}: {e}")
+            return f"ERROR: {e}"
+    
+    def execute_command_with_exit_code(self, command: str, timeout: int = 30) -> tuple:
+        """Выполнить команду и вернуть код выхода."""
+        try:
+            stdin, stdout, stderr = self.client.exec_command(command, timeout=timeout)
+            output = stdout.read().decode('utf-8').strip()
+            error = stderr.read().decode('utf-8').strip()
+            exit_code = stdout.channel.recv_exit_status()
+            return output, error, exit_code
+        except Exception as e:
+            logger.error(f"Ошибка выполнения команды на {self.server_id}: {e}")
+            return "", str(e), -1
+    
+    def close(self):
+        """Закрыть соединение (не закрываем, пул сам управляет)."""
+        pass
+    
+    def __enter__(self):
+        return self
+    
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()

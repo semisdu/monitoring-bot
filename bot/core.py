@@ -147,9 +147,12 @@ class MonitoringBot:
             allowed_updates=["message", "callback_query"]
         )
         
+        # Исправлено: убран паразитный while True цикл
+        # Теперь бот работает до получения сигнала остановки
         try:
-            while True:
-                await asyncio.sleep(1)
+            # Ожидаем завершения (бесконечное ожидание без нагрузки)
+            stop_event = asyncio.Event()
+            await stop_event.wait()
         except (KeyboardInterrupt, asyncio.CancelledError):
             logger.info("Бот остановлен")
         finally:
