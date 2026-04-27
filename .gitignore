@@ -17,3 +17,4 @@ __pycache__/
 *.bak
 *~
 config.yml.clean
+database/.daily_report_sent
