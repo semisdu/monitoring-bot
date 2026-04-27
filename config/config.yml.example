@@ -1,71 +1,80 @@
+# ============================================
 # Monitoring Bot Configuration Example
-# Скопируйте в config.yml и заполните своими данными
+# ============================================
+# Скопируйте этот файл в config.yml и отредактируйте под себя
+# cp config/config.yml.example config/config.yml
 
 # ==================== TELEGRAM ====================
 telegram:
-  token: "YOUR_BOT_TOKEN_HERE"  # Получить у @BotFather
-  admin_chat_id: YOUR_TELEGRAM_ID  # Ваш ID (можно узнать у @userinfobot)
+  token: "YOUR_BOT_TOKEN_HERE"           # Получить у @BotFather
+  admin_chat_id: 123456789               # Ваш Telegram ID (узнать у @userinfobot)
 
 # ==================== ПУТИ ====================
 paths:
-  base_dir: "/opt/monitoring-bot"
-  logs: "logs"
-  database: "database"
-  ssh_keys: "/opt/monitoring-bot/keys"
+  base_dir: "/opt/monitoring-bot"        # Директория установки бота
+  logs: "logs"                           # Относительный путь к логам
+  database: "database"                   # Относительный путь к БД
+  ssh_keys: "/opt/monitoring-bot/keys"   # Директория с SSH-ключами
 
 # ==================== СЕРВЕРЫ ====================
 servers:
   # Пример сервера с Docker
-  - id: "example-server"
-    name: "Example Server"
+  - id: "docker-server-1"
+    name: "Docker Server 1"
     host: "192.168.1.100"
-    user: "username"
+    ip: "192.168.1.100"
+    user: "admin"
     port: 22
-    ssh_key: "YOUR_KEY_NAME"
+    ssh_key: "id_ed25519_monitoring"
+    type: "docker"
     docker_enabled: true
     containers:
       - name: "postgres"
         service_name: "postgres"
         critical: true
         log_type: "postgres"
-      - name: "app"
-        service_name: "web"
+      - name: "web-app"
+        service_name: "app"
         critical: true
         log_type: "django_app"
 
-  # Пример PVE сервера
-  - id: "pve-example"
+  # Пример Proxmox VE хоста
+  - id: "pve-host"
     name: "PVE Hypervisor"
-    host: "192.168.1.99"
-    user: "root"
-    ssh_key: "YOUR_KEY_NAME"
+    host: "192.168.1.9"
+    ip: "192.168.1.9"
+    user: "semis"
+    port: 22
+    ssh_key: "id_ed25519_monitoring"
     type: "pve"
     api_enabled: true
-    api_host: "192.168.1.99"
+    api_host: "192.168.1.9"
     api_port: 8006
     api_user: "root@pam"
     api_verify_ssl: false
-    vms: [100, 101]
+    vms: [101, 102, 103]
 
-  # Пример PBS сервера
-  - id: "pbs-example"
+  # Пример PBS сервера (бэкапы)
+  - id: "pbs-backup"
     name: "Backup Server"
-    host: "192.168.1.37"
+    host: "192.168.1.7"
+    ip: "192.168.1.7"
     user: "root"
-    ssh_key: "YOUR_KEY_NAME"
+    port: 22
+    ssh_key: "id_ed25519_monitoring"
     type: "pbs"
     api_enabled: true
-    api_host: "192.168.1.37"
+    api_host: "192.168.1.7"
     api_port: 8007
     api_user: "root@pbs"
     api_verify_ssl: false
-    datastore: "local"
+    datastore: "backup"
 
-# ==================== САЙТЫ ====================
+# ==================== САЙТЫ ДЛЯ ПРОВЕРКИ ====================
 sites:
   - name: "Example Site"
     url: "https://example.com"
-    server_id: "example-server"
+    server_id: "docker-server-1"
     check_interval: 300
     critical: true
     expected_status: 200
@@ -73,25 +82,42 @@ sites:
 
 # ==================== ВИРТУАЛЬНЫЕ МАШИНЫ ====================
 virtual_machines:
-  - id: "vm100-example"
-    name: "Example VM"
-    vmid: 100
-    server_id: "pve-example"
+  - id: "vm101"
+    name: "Nextcloud VM"
+    vmid: 101
+    server_id: "pve-host"
+    description: "Файловое хранилище Nextcloud"
     critical: true
     monitoring:
       status: true
       resources: true
       alerts: true
 
-# ==================== БЭКАПЫ ====================
+# ==================== ЗАДАНИЯ БЭКАПОВ ====================
 backup_jobs:
-  - id: "daily-backup"
+  - id: "pbs-daily-backup"
     name: "Daily VM Backups"
-    server_id: "pbs-example"
-    check_type: "backup_status"
-    schedule: "daily"
-    retention_days: 7
-    vms: [100, 101]
+    server_id: "pbs-backup"
+    datastore: "backup"            # Имя датастора на PBS
+    retention_days: 7              # Хранить бэкапы 7 дней
+    vms: [101, 102, 103]
+
+# ==================== МОНИТОРИНГ ЛОГОВ ====================
+log_monitoring:
+  enabled: false
+  check_interval: 300
+  alert_cooldown: 3600
+  daily_reminder: "09:00"
+  critical_patterns:
+    - 'ERROR'
+    - 'CRITICAL'
+    - 'Exception'
+    - 'Traceback'
+    - 'Connection refused'
+  log_paths:
+    docker-server-1:
+      - "/var/log/nginx/error.log"
+      - "/home/user/app/logs/app.log"
 
 # ==================== МОНИТОРИНГ ЛОГОВ КОНТЕЙНЕРОВ ====================
 container_log_monitoring:
@@ -107,34 +133,25 @@ container_log_monitoring:
         - ["OperationalError", "Ошибка БД: {0}"]
         - ["Internal Server Error", "500 ошибка: {0}"]
         - ["ERROR", "Ошибка: {0}"]
+    
     postgres:
       name: "PostgreSQL"
       patterns:
         - ["FATAL", "Фатальная ошибка: {0}"]
         - ["ERROR", "Ошибка БД: {0}"]
-    nginx:
-      name: "Nginx"
-      patterns:
-        - ["[error]", "Ошибка: {0}"]
-        - ["[emerg]", "Критическая ошибка: {0}"]
 
 # ==================== РАСПИСАНИЕ ====================
 schedule:
-  status_check: "*/5 * * * *"
-  docker_check: "*/10 * * * *"
-  daily_report: "0 8 * * *"
-  cleanup: "0 2 * * 1"
-  vm_check: "0 */1 * * *"
-  backup_check: "0 6 * * *"
-  site_check: "*/15 * * * *"
+  status_check: "*/5 * * * *"           # Каждые 5 минут
+  log_check: "*/5 * * * *"              # Каждые 5 минут
+  daily_report: "0 9 * * *"             # В 09:00 каждый день
+  cleanup: "0 2 * * 1"                  # В 02:00 по понедельникам
+  vm_check: "0 */1 * * *"               # Каждый час (или */5 * * * * для каждых 5 минут)
+  backup_check: "0 6 * * *"             # В 06:00 каждый день
+  docker_check: "*/10 * * * *"          # Каждые 10 минут
+  site_check: "*/15 * * * *"            # Каждые 15 минут
 
-# ==================== УВЕДОМЛЕНИЯ И ОТЧЁТЫ ====================
-notifications:
-  daily_report:
-    enabled: true
-    time: "08:00"  # Время отправки ежедневного отчёта
-
-# ==================== АЛЕРТЫ ====================
+# ==================== ПОРОГИ АЛЕРТОВ ====================
 alert_config:
   disk_warning_percent: 80
   disk_critical_percent: 90
@@ -144,6 +161,9 @@ alert_config:
   cpu_critical_percent: 90
   site_timeout_seconds: 10
   container_restart_threshold: 3
+  error_count_threshold: 10
+  vm_cpu_threshold: 80
+  vm_memory_threshold: 85
   backup_age_warning_hours: 48
   backup_age_critical_hours: 72
 
@@ -157,7 +177,7 @@ logging:
 # ==================== ФУНКЦИОНАЛ ====================
 features:
   enable_infra_commands: true
-  enable_log_monitoring: true   # ВАЖНО: true для работы планировщика!
+  enable_log_monitoring: true
   enable_auto_restart: false
   enable_daily_reports: true
   enable_backup: true
@@ -166,4 +186,10 @@ features:
   enable_backup_check: true
   enable_docker: true
   enable_site_check: true
-  enable_cleanup: true
+
+# ==================== УВЕДОМЛЕНИЯ ====================
+notifications:
+  daily_report:
+    enabled: true
+    time: "08:00"                       # Время отправки отчёта
+    chat_id: 123456789                  # Опционально (если не указан — админу)
