@@ -18,3 +18,6 @@ __pycache__/
 *~
 config.yml.clean
 database/.daily_report_sent
+
+# Virtual environment
+venv/
