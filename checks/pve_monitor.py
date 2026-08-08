@@ -183,7 +183,7 @@ class PVEMonitor:
         vm_id: str = vm.get("id", f"vm{vmid}")
 
         ssh = self._get_ssh_client(self.pve_host)
-        command: str = f"pvesh get /nodes/localhost/qemu/{vmid}/status/current --output-format json"
+        command: str = f"sudo pvesh get /nodes/localhost/qemu/{vmid}/status/current --output-format json"
 
         try:
             result: str = ssh.execute_command(command)
