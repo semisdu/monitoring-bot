@@ -182,7 +182,7 @@ class NotificationManager:
         # Используем get_text с переданным chat_id для определения языка
         t = lambda key: get_text(chat_id, 'daily_report', key)
         
-        report = f"📊 {t('title')} 📊\n"
+        report = f"{t('title')}\n"
         report += f"📅 {date_str}\n\n"
         report += f"*{t('summary')}:*\n"
         report += f"• {t('total_errors')}: {trends['total_errors']}\n"
