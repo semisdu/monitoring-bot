@@ -10,6 +10,7 @@ from typing import Dict, Any, List, Optional
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from config.loader import get_sites
+from analytics.error_analyzer import add_error, resolve_error_by_site_url
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +37,41 @@ class SiteChecker:
         })
         self.timeout: int = timeout
 
+    def _save_site_result(self, result: Dict[str, Any]) -> None:
+        """
+        Сохранить результат проверки сайта в БД через error_analyzer.
+        Если сайт успешен — удаляем/резолвим ошибку, если нет — добавляем.
+        """
+        site_name = result.get('name', 'Unknown')
+        url = result.get('url', '')
+        is_success = result.get('success', False)
+        error_msg = result.get('error', '')
+
+        if is_success:
+            # Сайт доступен — помечаем проблему как решённую
+            try:
+                resolve_error_by_site_url(url)
+                logger.debug(f"Проблема для сайта {site_name} ({url}) помечена как решённая")
+            except Exception as e:
+                logger.debug(f"Не удалось пометить проблему как решённую: {e}")
+        else:
+            # Сайт недоступен — добавляем ошибку
+            try:
+                error_data = {
+                    'error_type': 'site_down',
+                    'severity': 'critical',
+                    'message': f"Сайт {site_name} недоступен: {error_msg}",
+                    'server_id': result.get('server', 'unknown'),
+                    'container_name': None,
+                    'site_url': url,
+                    'status_code': result.get('status_code', 0),
+                    'response_time': result.get('response_time', 0)
+                }
+                add_error(error_data)
+                logger.debug(f"Ошибка для сайта {site_name} добавлена в БД")
+            except Exception as e:
+                logger.error(f"Не удалось добавить ошибку сайта в БД: {e}")
+
     def check_all_sites(self) -> Dict[str, Any]:
         """
         Проверить все сайты из конфигурации.
@@ -52,6 +88,8 @@ class SiteChecker:
             for site_config in sites:
                 site_result = self.check_site(site_config)
                 results.append(site_result)
+                # Сохраняем результат в БД
+                self._save_site_result(site_result)
 
             return {
                 "success": True,
@@ -100,12 +138,14 @@ class SiteChecker:
         except Exception as error:
             error_msg = str(error)
             logger.error(f"Ошибка при проверке сайта {name}: {error_msg}")
-            return self._create_error_result(
+            result = self._create_error_result(
                 name=name,
                 url=url,
                 server=server,
                 error=error_msg
             )
+            self._save_site_result(result)
+            return result
 
     def _try_https_request(
         self,
@@ -127,9 +167,11 @@ class SiteChecker:
                 allow_redirects=True
             )
 
-            return self._create_success_result(
+            result = self._create_success_result(
                 name, url, server, response, start_time
             )
+            self._save_site_result(result)
+            return result
 
         except requests.exceptions.SSLError as e:
             logger.debug(f"SSL ошибка для {url}: {e}")
@@ -137,19 +179,27 @@ class SiteChecker:
         except requests.exceptions.ConnectionError as e:
             error_msg = f"Connection error: {e}"
             logger.debug(error_msg)
-            return self._create_error_result(name, url, server, error_msg)
+            result = self._create_error_result(name, url, server, error_msg)
+            self._save_site_result(result)
+            return result
         except requests.exceptions.Timeout as e:
             error_msg = f"Timeout: {e}"
             logger.debug(error_msg)
-            return self._create_error_result(name, url, server, error_msg)
+            result = self._create_error_result(name, url, server, error_msg)
+            self._save_site_result(result)
+            return result
         except requests.exceptions.RequestException as e:
             error_msg = f"Request error: {e}"
             logger.debug(error_msg)
-            return self._create_error_result(name, url, server, error_msg)
+            result = self._create_error_result(name, url, server, error_msg)
+            self._save_site_result(result)
+            return result
         except Exception as e:
             error_msg = f"Unexpected error: {e}"
             logger.debug(error_msg)
-            return self._create_error_result(name, url, server, error_msg)
+            result = self._create_error_result(name, url, server, error_msg)
+            self._save_site_result(result)
+            return result
 
     def _try_http_fallback(
         self,
@@ -163,7 +213,9 @@ class SiteChecker:
         Попробовать выполнить HTTP запрос (fallback после HTTPS ошибки).
         """
         if not url.startswith('https://'):
-            return self._create_error_result(name, url, server, "SSL error and not HTTPS")
+            result = self._create_error_result(name, url, server, "SSL error and not HTTPS")
+            self._save_site_result(result)
+            return result
 
         http_url: str = url.replace('https://', 'http://', 1)
         logger.debug(f"HTTP fallback к {http_url}")
@@ -180,24 +232,33 @@ class SiteChecker:
                 name, url, server, response, start_time
             )
             result["note"] = "SSL error, used HTTP"
+            self._save_site_result(result)
             return result
 
         except requests.exceptions.ConnectionError as e:
             error_msg = f"HTTP fallback connection error: {e}"
             logger.debug(error_msg)
-            return self._create_error_result(name, url, server, error_msg)
+            result = self._create_error_result(name, url, server, error_msg)
+            self._save_site_result(result)
+            return result
         except requests.exceptions.Timeout as e:
             error_msg = f"HTTP fallback timeout: {e}"
             logger.debug(error_msg)
-            return self._create_error_result(name, url, server, error_msg)
+            result = self._create_error_result(name, url, server, error_msg)
+            self._save_site_result(result)
+            return result
         except requests.exceptions.RequestException as e:
             error_msg = f"HTTP fallback request error: {e}"
             logger.debug(error_msg)
-            return self._create_error_result(name, url, server, error_msg)
+            result = self._create_error_result(name, url, server, error_msg)
+            self._save_site_result(result)
+            return result
         except Exception as e:
             error_msg = f"HTTP fallback unexpected error: {e}"
             logger.debug(error_msg)
-            return self._create_error_result(name, url, server, error_msg)
+            result = self._create_error_result(name, url, server, error_msg)
+            self._save_site_result(result)
+            return result
 
     def _is_success_status(self, status_code: int) -> bool:
         """
@@ -224,7 +285,7 @@ class SiteChecker:
             "id": name,
             "name": name,
             "url": url,
-            "success": is_up,  # ← ДОБАВЛЕНО поле success
+            "success": is_up,
             "status": "up" if is_up else "down",
             "status_code": status_code,
             "response_time": round(response_time, 2),
@@ -248,7 +309,7 @@ class SiteChecker:
             "id": name,
             "name": name,
             "url": url,
-            "success": False,  # ← ДОБАВЛЕНО поле success
+            "success": False,
             "status": "down",
             "status_code": 0,
             "response_time": 0,
@@ -277,15 +338,18 @@ class SiteChecker:
                 try:
                     result = future.result()
                     results.append(result)
+                    self._save_site_result(result)
                 except Exception as error:
                     error_msg = str(error)
                     logger.error(f"Ошибка при параллельной проверке {site.get('name')}: {error_msg}")
-                    results.append(self._create_error_result(
+                    result = self._create_error_result(
                         name=site.get('name', 'Unknown'),
                         url=site.get('url', ''),
                         server=site.get('server', ''),
                         error=error_msg
-                    ))
+                    )
+                    results.append(result)
+                    self._save_site_result(result)
 
         return results
 

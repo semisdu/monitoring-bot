@@ -195,9 +195,9 @@
   "language": {
     "select": "🌐 Select language:",
     "changed": "✅ Language changed",
-    "ru": "🇷🇺 Russian",
-    "en": "🇬🇧 English",
-    "uk": "🇺🇦 Ukrainian"
+    "ru": "🇷🇺ussian",
+    "en": "🇬🇧nglish",
+    "uk": "🇺🇦krainian"
   },
   "analytics": {
     "daily_report": {
@@ -314,5 +314,17 @@
       "type": "📝 Type",
       "error": "⚠ Error"
     }
+  },
+  "daily_report": {
+    "title": "📊 DAILY REPORT",
+    "summary": "📈 OVERALL STATISTICS",
+    "total_errors": "Total errors in the week",
+    "unique_problems": "Unique problems",
+    "resolved": "Resolved",
+    "active": "🔴 ACTIVE PROBLEMS",
+    "distribution": "📊 DISTRIBUTION BY TYPE",
+    "dynamics": "📈 WEEKLY DYNAMICS",
+    "no_active_problems": "✅ NO ACTIVE PROBLEMS",
+    "errors_count": "errors"
   }
 }

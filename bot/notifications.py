@@ -1,4 +1,4 @@
-#!/usr/env python3
+#!/usr/bin/env python3
 """
 Модуль уведомлений и алертов
 Отправляет мгновенные уведомления о проблемах и ежедневные отчёты
@@ -8,11 +8,11 @@ import logging
 import asyncio
 from datetime import datetime, timedelta
 from typing import Dict, Any, Optional
-from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application
+from telegram import Bot
 
 from config.loader import load_config, get_telegram_token, get_admin_chat_id
 from analytics.error_analyzer import get_current_problems, get_trends
+from bot.language import get_text, get_user_language
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +24,7 @@ class NotificationManager:
         """Инициализация менеджера уведомлений с передачей бота извне"""
         self.config = load_config()
         self.notifications_config = self.config.get('notifications', {})
-        self.bot = bot  # <-- ИСПОЛЬЗУЕМ ПЕРЕДАННОГО БОТА
+        self.bot = bot
         self.admin_chat_id = get_admin_chat_id()
         
         # Кэш для предотвращения спама
@@ -107,64 +107,115 @@ class NotificationManager:
         }
         return titles.get(error_type, 'Обнаружена проблема')
 
-    async def send_daily_report(self) -> bool:
-        """Отправляет ежедневный отчёт."""
+    async def send_daily_report(self, chat_id: Optional[int] = None) -> bool:
+        """
+        Отправляет ежедневный отчёт.
+        
+        Args:
+            chat_id: ID получателя. Если None — отправляется админу.
+        """
         try:
             if not self.notifications_config.get('daily_report', {}).get('enabled', True):
                 return False
 
-            report = await self._generate_daily_report()
+            target_chat_id = chat_id if chat_id is not None else self.admin_chat_id
+            
+            # Определяем язык пользователя
+            user_lang = get_user_language(target_chat_id)
+            
+            report = await self._generate_daily_report(target_chat_id, user_lang)
             
             await self.bot.send_message(
-                chat_id=self.admin_chat_id,
+                chat_id=target_chat_id,
                 text=report,
                 parse_mode='Markdown',
                 disable_web_page_preview=True
             )
             
-            logger.info("Ежедневный отчёт отправлен")
+            logger.info(f"Ежедневный отчёт отправлен пользователю {target_chat_id} на языке {user_lang}")
             return True
 
         except Exception as e:
             logger.error(f"Ошибка при отправке ежедневного отчёта: {e}")
             return False
 
-    async def _generate_daily_report(self) -> str:
+    async def _run_pre_report_checks(self) -> None:
+        """Запускает все проверки перед формированием отчёта"""
+        try:
+            from checks.site_checker import check_all_sites
+            from checks.pve_monitor import check_pve
+            from checks.pbs_monitor import check_pbs
+            from checks.docker import check_all_docker_servers
+            from checks.container_log_monitor import check_container_logs
+            
+            # Запускаем все проверки параллельно
+            results = await asyncio.gather(
+                check_all_sites(),
+                check_pve(),
+                check_pbs(),
+                asyncio.to_thread(check_all_docker_servers),
+                check_container_logs(),
+                return_exceptions=True
+            )
+            
+            # Логируем результат
+            for i, result in enumerate(results):
+                if isinstance(result, Exception):
+                    logger.warning(f"Ошибка при проверке #{i}: {result}")
+            
+            logger.info("✅ Предварительные проверки для отчёта выполнены")
+        except Exception as e:
+            logger.error(f"Ошибка при выполнении предварительных проверок: {e}")
+
+    async def _generate_daily_report(self, chat_id: int, lang: str) -> str:
+        """Генерирует ежедневный отчёт на указанном языке"""
+        # 🔄 Сначала делаем свежие проверки
+        await self._run_pre_report_checks()
+        
+        # Теперь берём данные из БД (они уже обновлены)
         now = datetime.now()
         date_str = now.strftime('%d.%m.%Y')
         
         problems = get_current_problems()
         trends = get_trends(days=7)
         
-        report = f"📊 *ЕЖЕДНЕВНЫЙ ОТЧЁТ* 📊\n"
+        # Используем get_text с переданным chat_id для определения языка
+        t = lambda key: get_text(chat_id, 'daily_report', key)
+        
+        report = f"📊 {t('title')} 📊\n"
         report += f"📅 {date_str}\n\n"
-        report += f"*📈 ОБЩАЯ СТАТИСТИКА:*\n"
-        report += f"• Всего ошибок за неделю: {trends['total_errors']}\n"
-        report += f"• Уникальных проблем: {trends['unique_errors']}\n"
-        report += f"• Решено: {trends['resolved']}\n\n"
+        report += f"*{t('summary')}:*\n"
+        report += f"• {t('total_errors')}: {trends['total_errors']}\n"
+        report += f"• {t('unique_problems')}: {trends['unique_errors']}\n"
+        report += f"• {t('resolved')}: {trends['resolved']}\n\n"
         
         if problems:
-            report += f"*🔴 АКТИВНЫЕ ПРОБЛЕМЫ:*\n"
+            report += f"*{t('active')}:*\n"
             for i, p in enumerate(problems[:5], 1):
                 severity_icon = "🚨" if p['severity'] == 'critical' else "⚠"
-                report += f"{i}. {severity_icon} *{self._get_error_title(p['error_type'])}*\n"
+                # Получаем название типа ошибки из языкового файла
+                error_title = get_text(chat_id, 'analytics', 'error_types', key=p['error_type'])
+                report += f"{i}. {severity_icon} *{error_title}*\n"
                 report += f"   📝 {p['message'][:100]}\n"
                 if p['server_id']:
                     report += f"   🖥 {p['server_id']}\n"
                 if p['occurrence_count'] > 1:
                     report += f"   🔄 Повторений: {p['occurrence_count']}\n"
                 report += "\n"
+        else:
+            report += f"*{t('no_active_problems')}*\n\n"
         
         if trends['by_type']:
-            report += f"*📊 РАСПРЕДЕЛЕНИЕ ПО ТИПАМ:*\n"
-            for t in trends['by_type'][:5]:
-                report += f"• {self._get_error_title(t['type'])}: {t['count']}\n"
+            report += f"*{t('distribution')}:*\n"
+            for item in trends['by_type'][:5]:
+                error_title = get_text(chat_id, 'analytics', 'error_types', key=item['error_type'])
+                report += f"• {error_title}: {item['count']}\n"
             report += "\n"
         
         if trends['by_day']:
-            report += f"*📈 ДИНАМИКА ЗА НЕДЕЛЮ:*\n"
+            report += f"*{t('dynamics')}:*\n"
             for d in trends['by_day']:
-                report += f"• {d['date']}: {d['count']} ошибок\n"
+                report += f"• {d['date']}: {d['count']} {t('errors_count')}\n"
         
         return report
 
@@ -205,8 +256,8 @@ async def send_alert(error_data: Dict[str, Any]) -> bool:
     return await get_notification_manager().send_instant_alert(error_data)
 
 
-async def send_daily_report() -> bool:
-    return await get_notification_manager().send_daily_report()
+async def send_daily_report(chat_id: Optional[int] = None) -> bool:
+    return await get_notification_manager().send_daily_report(chat_id)
 
 
 async def send_test() -> bool:

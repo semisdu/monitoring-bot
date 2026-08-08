@@ -63,7 +63,7 @@ class MonitoringBot:
             logger.error("Application не инициализирован")
             return
 
-        self.scheduler = setup_scheduler(self.application)
+        self.scheduler = setup_scheduler()
 
         if self.scheduler:
             logger.info("Планировщик задач настроен")

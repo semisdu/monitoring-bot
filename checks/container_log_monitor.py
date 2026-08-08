@@ -17,7 +17,8 @@ from config.loader import (
     get_container_log_monitoring_config,
     get_container_patterns,
     get_all_containers_with_servers,
-    get_server_config
+    get_server_config,
+    load_config
 )
 from utils.ssh import SSHClient
 from bot.language import get_text
@@ -38,15 +39,17 @@ _alert_cooldown: timedelta = timedelta(minutes=ALERT_COOLDOWN_MINUTES)
 
 
 class ContainerLogMonitor:
-    """Моніторинг логів Docker контейнерів"""
+    """Мониторинг логов Docker контейнеров"""
 
     def __init__(self) -> None:
         self.bot = Bot(token=get_telegram_token())
         self.patterns = get_container_patterns()
+        self.full_config = load_config()
+        self.instant_alerts_enabled = self.full_config.get('instant_alerts', {}).get('enabled', True)
 
     async def check_all_containers_logs(self) -> None:
-        """Перевірити логи всіх контейнерів"""
-        logger.info("🔍 Запуск перевірки логів контейнерів...")
+        """Проверить логи всех контейнеров"""
+        logger.info("🔍 Запуск проверки логов контейнеров...")
 
         containers = get_all_containers_with_servers()
         
@@ -58,38 +61,38 @@ class ContainerLogMonitor:
                     container.get('log_type')
                 )
             except Exception as e:
-                logger.error(f"Помилка перевірки {container['container_name']} на {container['server_id']}: {e}")
+                logger.error(f"Ошибка проверки {container['container_name']} на {container['server_id']}: {e}")
 
     async def _check_container_logs(self, server_id: str, container_name: str, log_type: Optional[str]) -> None:
         """
-        Перевірити логи конкретного контейнера
+        Проверить логи конкретного контейнера
 
         Args:
             server_id: ID сервера
-            container_name: Ім'я контейнера
+            container_name: Имя контейнера
             log_type: Тип контейнера (django_app, postgres, etc)
         """
         if not log_type:
-            logger.warning(f"Немає log_type для контейнера {container_name} на {server_id}")
+            logger.warning(f"Нет log_type для контейнера {container_name} на {server_id}")
             return
 
-        # Отримуємо конфіг для контейнера
+        # Получаем конфиг для контейнера
         container_config = self.patterns.get(log_type)
         if not container_config:
-            logger.warning(f"Немає конфігурації для типу {log_type} (контейнер {container_name})")
+            logger.warning(f"Нет конфигурации для типа {log_type} (контейнер {container_name})")
             return
 
         ssh = SSHClient(server_id)
 
-        # Команда для отримання логів контейнера
+        # Команда для получения логов контейнера
         cmd = f"docker logs --tail {DEFAULT_LOG_LINES} {container_name} 2>&1"
 
         try:
-            # Асинхронний виклик SSH команди
+            # Асинхронный вызов SSH команды
             result = await asyncio.to_thread(ssh.execute_command, cmd)
 
             if not result or "Error: No such container" in result:
-                logger.error(f"Контейнер {container_name} не знайдено на {server_id}")
+                logger.error(f"Контейнер {container_name} не найден на {server_id}")
                 return
 
             log_lines = result.strip().split('\n')
@@ -105,7 +108,7 @@ class ContainerLogMonitor:
                 )
 
         except Exception as e:
-            logger.error(f"SSH помилка при отриманні логів {container_name}: {e}")
+            logger.error(f"SSH ошибка при получении логов {container_name}: {e}")
 
     async def _check_line(
         self,
@@ -115,7 +118,7 @@ class ContainerLogMonitor:
         line: str,
         now: datetime
     ) -> None:
-        """Перевірити рядок логу на наявність помилок"""
+        """Проверить строку лога на наличие ошибок"""
 
         patterns = container_config.get('patterns', [])
         
@@ -124,54 +127,62 @@ class ContainerLogMonitor:
             if not match:
                 continue
 
-            # Унікальний ключ для кешу
+            # Уникальный ключ для кэша
             error_key = f"{server_id}:{container_name}:{pattern}"
 
-            # Перевіряємо чи не було такого алерту нещодавно
+            # Проверяем, не было ли такого алерта недавно
             if error_key in _alert_cache:
                 last_alert = _alert_cache[error_key]
                 if now - last_alert < _alert_cooldown:
                     continue
 
-            # Отримуємо іконку для цього типу помилки
+            # Получаем словарь иконок
+            icons_dict = get_text(ADMIN_USER_ID, 'container_logs', 'icons')
             icon_key = self._get_icon_key(pattern)
-            icon = get_text(ADMIN_USER_ID, 'container_logs', 'icons', key=icon_key)
+            icon = icons_dict.get(icon_key, '⚠')
 
-            # Формуємо повідомлення
+            # Формируем сообщение
             error_text = match.group(0) if match.groups() else pattern
             message = template.format(error_text)
 
-            # Обрізаємо довгі рядки
+            # Обрезаем длинные строки
             short_line = line[:200] + "..." if len(line) > 200 else line
 
-            # Отримуємо назву сервера для краси
+            # Получаем название сервера для красоты
             server_config = get_server_config(server_id)
             server_name = server_config.get('name', server_id) if server_config else server_id
             container_type_name = container_config.get('name', 'Unknown')
 
+            # Получаем словарь сообщений
+            messages_dict = get_text(ADMIN_USER_ID, 'container_logs', 'messages')
+
             alert_text = (
-                f"{get_text(ADMIN_USER_ID, 'container_logs', 'messages', key='error_found')}\n"
-                f"{get_text(ADMIN_USER_ID, 'container_logs', 'messages', key='container')}: `{container_name}`\n"
-                f"{get_text(ADMIN_USER_ID, 'container_logs', 'messages', key='server')}: {server_name}\n"
-                f"{get_text(ADMIN_USER_ID, 'container_logs', 'messages', key='type')}: {container_type_name}\n"
-                f"{get_text(ADMIN_USER_ID, 'container_logs', 'messages', key='error')}: {icon} {message}\n"
+                f"{messages_dict['error_found']}\n"
+                f"{messages_dict['container']}: `{container_name}`\n"
+                f"{messages_dict['server']}: {server_name}\n"
+                f"{messages_dict['type']}: {container_type_name}\n"
+                f"{messages_dict['error']}: {icon} {message}\n"
                 f"```\n{short_line}\n```"
             )
 
-            await self._send_alert(alert_text)
+            # Отправляем алерт только если мгновенные алерты включены
+            if self.instant_alerts_enabled:
+                await self._send_alert(alert_text)
+            else:
+                logger.info(f"⚠ Найдена ошибка в {container_name}: {message} (мгновенные алерты отключены)")
+
             _alert_cache[error_key] = now
-            logger.info(f"⚠ Знайдено помилку в {container_name}: {message}")
             break
 
     def _get_icon_key(self, pattern: str) -> str:
         """
-        Визначає ключ для іконки на основі паттерна
+        Определяет ключ для иконки на основе паттерна
 
         Args:
             pattern: Regex паттерн
 
         Returns:
-            Ключ для отримання іконки з language файлу
+            Ключ для получения иконки из language файла
         """
         pattern_map = {
             r'OperationalError': 'OperationalError',
@@ -208,26 +219,26 @@ class ContainerLogMonitor:
         return 'ERROR'
 
     async def _send_alert(self, message: str) -> None:
-        """Відправити алерт"""
+        """Отправить алерт"""
         try:
             await self.bot.send_message(
                 chat_id=ADMIN_USER_ID,
                 text=message,
                 parse_mode='Markdown'
             )
-            logger.info("✅ Алерт про помилку в контейнері відправлено")
+            logger.info("✅ Алерт об ошибке в контейнере отправлен")
         except Exception as e:
-            logger.error(f"❌ Помилка відправки алерту: {e}")
+            logger.error(f"❌ Ошибка отправки алерта: {e}")
 
 
 async def check_container_logs():
-    """Запустити перевірку логів контейнерів"""
+    """Запустить проверку логов контейнеров"""
     monitor = ContainerLogMonitor()
     await monitor.check_all_containers_logs()
 
 
 def run_container_logs_check():
-    """Синхронний запуск для тестування"""
+    """Синхронный запуск для тестирования"""
     asyncio.run(check_container_logs())
 
 
