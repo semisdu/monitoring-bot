@@ -135,6 +135,73 @@ class MonitoringDB:
             logger.error(f"Ошибка добавления алерта: {e}")
             return None
     
+    def get_alert_by_id(self, alert_id: int) -> Optional[Dict[str, Any]]:
+        """Получить алерт по ID"""
+        try:
+            with self._get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    """
+                    SELECT id, alert_type, title, message, severity, resolved, 
+                           resolved_at, created_at
+                    FROM alerts 
+                    WHERE id = ?
+                    """,
+                    (alert_id,)
+                )
+                row = cursor.fetchone()
+                if row:
+                    return dict(row)
+                return None
+        except Exception as e:
+            logger.error(f"Ошибка получения алерта {alert_id}: {e}")
+            return None
+    
+    def resolve_alert(self, alert_id: int) -> bool:
+        """Пометить алерт как решённый по ID"""
+        try:
+            with self._get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    """
+                    UPDATE alerts 
+                    SET resolved = 1, resolved_at = CURRENT_TIMESTAMP 
+                    WHERE id = ? AND resolved = 0
+                    """,
+                    (alert_id,)
+                )
+                conn.commit()
+                affected = cursor.rowcount
+                if affected > 0:
+                    logger.info(f"Алерт {alert_id} помечен как решённый")
+                    return True
+                else:
+                    logger.warning(f"Алерт {alert_id} не найден или уже решён")
+                    return False
+        except Exception as e:
+            logger.error(f"Ошибка разрешения алерта {alert_id}: {e}")
+            return False
+    
+    def resolve_all_alerts(self) -> int:
+        """Пометить все алерты как решённые"""
+        try:
+            with self._get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    """
+                    UPDATE alerts 
+                    SET resolved = 1, resolved_at = CURRENT_TIMESTAMP 
+                    WHERE resolved = 0
+                    """
+                )
+                conn.commit()
+                count = cursor.rowcount
+                logger.info(f"Помечено {count} алертов как решённые")
+                return count
+        except Exception as e:
+            logger.error(f"Ошибка разрешения всех алертов: {e}")
+            return 0
+    
     def get_unresolved_alerts(self, limit: int = 10) -> List[Dict[str, Any]]:
         """Получить нерешенные алерты"""
         try:
@@ -142,7 +209,7 @@ class MonitoringDB:
                 cursor = conn.cursor()
                 cursor.execute(
                     """
-                    SELECT severity, title, message, created_at 
+                    SELECT id, alert_type, title, message, severity, created_at 
                     FROM alerts 
                     WHERE resolved = 0 
                     ORDER BY created_at DESC 
@@ -154,10 +221,12 @@ class MonitoringDB:
                 alerts = []
                 for row in cursor.fetchall():
                     alerts.append({
-                        'severity': row[0],
-                        'title': row[1],
-                        'message': row[2],
-                        'created_at': row[3]
+                        'id': row[0],
+                        'alert_type': row[1],
+                        'title': row[2],
+                        'message': row[3],
+                        'severity': row[4],
+                        'created_at': row[5]
                     })
                 
                 return alerts

@@ -6,8 +6,10 @@
 import asyncio
 import logging
 import sys
+import time
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Dict, List
+from collections import defaultdict
 
 from telegram import Update
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
@@ -20,6 +22,75 @@ from .scheduler import setup_scheduler
 logger = logging.getLogger(__name__)
 
 
+class RateLimiter:
+    """Ограничитель частоты запросов"""
+    
+    def __init__(self, max_requests: int = 10, window_seconds: int = 60, ban_seconds: int = 300):
+        """
+        Args:
+            max_requests: Максимальное количество запросов за окно
+            window_seconds: Длительность окна в секундах
+            ban_seconds: Время блокировки при превышении
+        """
+        self.max_requests = max_requests
+        self.window_seconds = window_seconds
+        self.ban_seconds = ban_seconds
+        self.requests: Dict[int, List[float]] = defaultdict(list)
+        self.banned: Dict[int, float] = {}
+    
+    def is_allowed(self, user_id: int) -> bool:
+        """Проверить, разрешён ли запрос"""
+        now = time.time()
+        
+        # Проверяем, не забанен ли пользователь
+        if user_id in self.banned:
+            ban_until = self.banned[user_id]
+            if now < ban_until:
+                logger.warning(f"Пользователь {user_id} забанен до {datetime.fromtimestamp(ban_until)}")
+                return False
+            else:
+                # Бан истёк
+                del self.banned[user_id]
+                self.requests[user_id] = []
+        
+        # Очищаем старые запросы
+        if user_id in self.requests:
+            self.requests[user_id] = [
+                t for t in self.requests[user_id] 
+                if now - t < self.window_seconds
+            ]
+        else:
+            self.requests[user_id] = []
+        
+        # Проверяем лимит
+        if len(self.requests[user_id]) >= self.max_requests:
+            # Баним пользователя
+            self.banned[user_id] = now + self.ban_seconds
+            logger.warning(f"Пользователь {user_id} забанен на {self.ban_seconds}с (превышен лимит {self.max_requests} запросов за {self.window_seconds}с)")
+            return False
+        
+        # Добавляем запрос
+        self.requests[user_id].append(now)
+        return True
+    
+    def get_remaining(self, user_id: int) -> int:
+        """Получить количество оставшихся запросов"""
+        now = time.time()
+        
+        if user_id in self.banned:
+            return 0
+        
+        if user_id in self.requests:
+            # Очищаем старые запросы
+            self.requests[user_id] = [
+                t for t in self.requests[user_id] 
+                if now - t < self.window_seconds
+            ]
+            return max(0, self.max_requests - len(self.requests[user_id]))
+        
+        return self.max_requests
+
+
 class MonitoringBot:
     """Основной класс приложения бота"""
 
@@ -29,6 +100,7 @@ class MonitoringBot:
         self.job_queue = None
         self.scheduler = None
         self.config = None
+        self.rate_limiter = RateLimiter(max_requests=10, window_seconds=60, ban_seconds=300)
 
     def setup_application(self) -> None:
         """Настройка Telegram приложения."""
@@ -50,6 +122,40 @@ class MonitoringBot:
         self.application.add_error_handler(self._error_handler)
 
         logger.info("Telegram приложение инициализировано")
+
+    async def _check_rate_limit(self, update: Update) -> bool:
+        """Проверить rate limit для пользователя"""
+        if not update.effective_user:
+            return True
+        
+        user_id = update.effective_user.id
+        
+        # Администраторы не ограничиваются
+        admin_chat_id = self.config.get('telegram', {}).get('admin_chat_id')
+        if admin_chat_id and str(user_id) == str(admin_chat_id):
+            return True
+        
+        if not self.rate_limiter.is_allowed(user_id):
+            remaining = self.rate_limiter.get_remaining(user_id)
+            
+            # Отправляем сообщение о блокировке
+            try:
+                if update.callback_query:
+                    await update.callback_query.answer(
+                        "⏳ Слишком много запросов! Подождите 5 минут.",
+                        show_alert=True
+                    )
+                else:
+                    await update.message.reply_text(
+                        "⏳ Слишком много запросов!\n"
+                        "Пожалуйста, подождите 5 минут перед новыми командами."
+                    )
+            except Exception as e:
+                logger.error(f"Ошибка отправки сообщения о блокировке: {e}")
+            
+            return False
+        
+        return True
 
     def setup_scheduler(self) -> None:
         """Настройка планировщика задач."""
@@ -122,6 +228,22 @@ class MonitoringBot:
     ) -> None:
         """Глобальный обработчик ошибок."""
         logger.error(f"Исключение при обработке обновления {update}: {context.error}")
+        
+        # Отправляем пользователю сообщение об ошибке
+        if update and update.effective_user:
+            try:
+                if update.callback_query:
+                    await update.callback_query.answer(
+                        "❌ Произошла ошибка. Попробуйте позже.",
+                        show_alert=True
+                    )
+                elif update.message:
+                    await update.message.reply_text(
+                        "❌ Произошла ошибка при обработке запроса.\n"
+                        "Пожалуйста, попробуйте позже."
+                    )
+            except Exception as e:
+                logger.error(f"Ошибка отправки сообщения об ошибке: {e}")
 
     async def run(self) -> None:
         """Запуск бота."""
@@ -147,8 +269,23 @@ class MonitoringBot:
             allowed_updates=["message", "callback_query"]
         )
         
-        # Исправлено: убран паразитный while True цикл
-        # Теперь бот работает до получения сигнала остановки
+        # Запускаем фоновую задачу очистки rate limit
+        async def cleanup_rate_limits():
+            while True:
+                await asyncio.sleep(60)  # Раз в минуту
+                # Очищаем старые записи
+                now = time.time()
+                for user_id in list(self.rate_limiter.requests.keys()):
+                    self.rate_limiter.requests[user_id] = [
+                        t for t in self.rate_limiter.requests[user_id]
+                        if now - t < self.rate_limiter.window_seconds
+                    ]
+                    if not self.rate_limiter.requests[user_id]:
+                        del self.rate_limiter.requests[user_id]
+        
+        # Запускаем очистку в фоне
+        cleanup_task = asyncio.create_task(cleanup_rate_limits())
+        
         try:
             # Ожидаем завершения (бесконечное ожидание без нагрузки)
             stop_event = asyncio.Event()
@@ -156,6 +293,15 @@ class MonitoringBot:
         except (KeyboardInterrupt, asyncio.CancelledError):
             logger.info("Бот остановлен")
         finally:
+            cleanup_task.cancel()
             await self.application.updater.stop()
             await self.application.stop()
             await self.application.shutdown()
+
+
+# Глобальный экземпляр для доступа из других модулей
+_bot_instance: Optional[MonitoringBot] = None
+
+def get_bot_instance() -> Optional[MonitoringBot]:
+    """Получить экземпляр бота"""
+    return _bot_instance
