@@ -8,17 +8,13 @@ import logging
 import sys
 from pathlib import Path
 
-# Настройка логирования
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler('logs/bot.log'),
-        logging.StreamHandler()
-    ]
-)
-
+# Настройка пути
 sys.path.insert(0, str(Path(__file__).parent))
+
+from config.settings import setup_logging
+
+# Настраиваем логирование в JSON формате
+setup_logging(json_format=True)
 
 from bot.core import MonitoringBot
 
@@ -28,15 +24,13 @@ async def run_bot():
     await bot.run()
 
 def main():
-    """Основная функция."""
+    """Главная функция."""
     try:
         asyncio.run(run_bot())
     except KeyboardInterrupt:
         logging.info("Бот остановлен пользователем")
     except Exception as e:
         logging.error(f"Критическая ошибка: {e}")
-        import traceback
-        traceback.print_exc()
         sys.exit(1)
 
 if __name__ == "__main__":
