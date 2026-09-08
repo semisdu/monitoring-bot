@@ -195,26 +195,20 @@
   "language": {
     "select": "🌐 Select language:",
     "changed": "✅ Language changed",
-    "ru": "🇷🇺ussian",
-    "en": "🇬🇧nglish",
-    "uk": "🇺🇦krainian"
+    "ru": "🇷🇺sian",
+    "en": "🇬🇧lish",
+    "uk": "🇺🇦ainian"
   },
   "analytics": {
-    "daily_report": {
-      "summary": "📈 OVERALL STATISTICS",
-      "total_errors": "Total errors",
-      "unique_problems": "Unique problems",
-      "resolved": "Resolved",
-      "active": "🔴 ACTIVE PROBLEMS"
-    },
     "error_types": {
       "docker_down": "Container stopped",
       "site_down": "Site unavailable",
       "high_cpu": "High CPU load",
       "disk_full": "Disk space running out",
-      "backup_old": "Backup outdated",
+      "backup_old": "Outdated backup",
       "connection_error": "Connection error",
-      "test_error": "Test error"
+      "test_error": "Test notification",
+      "unknown": "Unknown error"
     },
     "severity": {
       "critical": "🚨 Critical",

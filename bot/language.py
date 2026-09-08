@@ -94,12 +94,13 @@ def get_text(user_id: int, category: str, key: str, **kwargs) -> str:
     """
     Получить текст для указанного пользователя по категории и ключу.
     
+    Поддерживает вложенные категории через точку: 'analytics.error_types'
     Поддерживает плейсхолдеры в формате {name}.
     
     Args:
         user_id: ID пользователя Telegram
-        category: Категория текста (например, 'start', 'docker')
-        key: Ключ текста в категории (например, 'welcome', 'status')
+        category: Категория текста (например, 'start', 'analytics.error_types')
+        key: Ключ текста в категории (например, 'welcome', 'docker_down')
         **kwargs: Параметры для подстановки в текст
         
     Returns:
@@ -108,6 +109,8 @@ def get_text(user_id: int, category: str, key: str, **kwargs) -> str:
     Example:
         >>> get_text(12345, 'start', 'welcome', name='Иван')
         '👋 Привет, Иван!'
+        >>> get_text(12345, 'analytics.error_types', 'docker_down')
+        'Контейнер остановлен'
     """
     # Получаем язык пользователя
     lang_code: str = language_manager.get_user_language(user_id)
@@ -115,11 +118,11 @@ def get_text(user_id: int, category: str, key: str, **kwargs) -> str:
     # Загружаем язык
     lang_data: Dict[str, Any] = load_language(lang_code)
     
-    # Ищем текст
+    # Ищем текст (с поддержкой вложенных категорий)
     text: str = _find_text(lang_data, lang_code, category, key)
     
     # Подставляем параметры
-    if kwargs and text:
+    if kwargs and text and '{' in text:
         try:
             text = text.format(**kwargs)
         except KeyError as error:
@@ -131,6 +134,32 @@ def get_text(user_id: int, category: str, key: str, **kwargs) -> str:
     return text
 
 
+def _get_nested_value(data: Dict[str, Any], path: str) -> Any:
+    """
+    Получить значение по вложенному пути с точками.
+    
+    Args:
+        data: Словарь с данными
+        path: Путь через точку (например, 'analytics.error_types')
+        
+    Returns:
+        Значение или пустой словарь если не найдено
+    """
+    if not path:
+        return data
+    
+    parts = path.split('.')
+    current = data
+    
+    for part in parts:
+        if isinstance(current, dict):
+            current = current.get(part, {})
+        else:
+            return {}
+    
+    return current
+
+
 def _find_text(
     lang_data: Dict[str, Any],
     lang_code: str,
@@ -140,35 +169,44 @@ def _find_text(
     """
     Найти текст в языковых данных.
     
+    Поддерживает вложенные категории через точку: 'analytics.error_types'
+    
     Args:
         lang_data: Данные языка
         lang_code: Код языка
-        category: Категория
+        category: Категория (может содержать точки)
         key: Ключ
         
     Returns:
         Найденный текст или заглушка
     """
     try:
-        text: str = lang_data.get(category, {}).get(key, "")
+        # Получаем данные по вложенному пути
+        current = _get_nested_value(lang_data, category)
         
-        # Если текст не найден, пробуем на русском
-        if not text and lang_code != DEFAULT_LANGUAGE:
-            logger.debug(
-                f"Текст [{category}.{key}] не найден в {lang_code}, "
-                f"ищем в {DEFAULT_LANGUAGE}"
-            )
-            ru_data: Dict[str, Any] = load_language(DEFAULT_LANGUAGE)
-            text = ru_data.get(category, {}).get(key, "")
+        # Получаем текст по ключу
+        if isinstance(current, dict):
+            text = current.get(key, "")
+            if text:
+                return text
         
-        # Если всё ещё не найден, возвращаем заглушку
-        if not text:
-            logger.warning(
-                f"Текст [{category}.{key}] не найден ни в одном языке"
-            )
-            return f"[{category}.{key}]"
+        # Если не нашли — пробуем русский как fallback
+        if lang_code != DEFAULT_LANGUAGE:
+            ru_data = load_language(DEFAULT_LANGUAGE)
+            current = _get_nested_value(ru_data, category)
+            if isinstance(current, dict):
+                text = current.get(key, "")
+                if text:
+                    logger.debug(
+                        f"Текст [{category}.{key}] взят из {DEFAULT_LANGUAGE}"
+                    )
+                    return text
         
-        return text
+        # Если всё ещё не найдено — заглушка
+        logger.warning(
+            f"Текст [{category}.{key}] не найден ни в одном языке"
+        )
+        return f"[{category}.{key}]"
         
     except Exception as error:
         logger.error(f"Ошибка получения текста [{category}.{key}]: {error}")

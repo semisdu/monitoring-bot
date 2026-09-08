@@ -179,8 +179,9 @@ class NotificationManager:
         problems = get_current_problems()
         trends = get_trends(days=7)
         
-        # Используем get_text с переданным chat_id для определения языка
-        t = lambda key: get_text(chat_id, 'daily_report', key)
+        # Вспомогательная функция для получения текста
+        def t(key):
+            return get_text(chat_id, 'daily_report', key)
         
         report = f"{t('title')}\n"
         report += f"📅 {date_str}\n\n"
@@ -193,8 +194,8 @@ class NotificationManager:
             report += f"*{t('active')}:*\n"
             for i, p in enumerate(problems[:5], 1):
                 severity_icon = "🚨" if p['severity'] == 'critical' else "⚠"
-                # Получаем название типа ошибки из языкового файла
-                error_title = get_text(chat_id, 'analytics', 'error_types', key=p['error_type'])
+                # Получаем название типа ошибки
+                error_title = get_text(chat_id, 'analytics.error_types', p.get('error_type', 'unknown'))
                 report += f"{i}. {severity_icon} *{error_title}*\n"
                 report += f"   📝 {p['message'][:100]}\n"
                 if p['server_id']:
@@ -208,7 +209,7 @@ class NotificationManager:
         if trends['by_type']:
             report += f"*{t('distribution')}:*\n"
             for item in trends['by_type'][:5]:
-                error_title = get_text(chat_id, 'analytics', 'error_types', key=item['error_type'])
+                error_title = get_text(chat_id, 'analytics.error_types', item.get('error_type', 'unknown'))
                 report += f"• {error_title}: {item['count']}\n"
             report += "\n"
         
@@ -242,13 +243,30 @@ def init_notification_manager(bot: Bot) -> None:
     """Инициализирует менеджер уведомлений с переданным ботом"""
     global _notification_manager
     _notification_manager = NotificationManager(bot)
+    logger.info("NotificationManager инициализирован")
 
 
 def get_notification_manager() -> NotificationManager:
-    """Получить экземпляр менеджера уведомлений"""
+    """Получить экземпляр менеджера уведомлений с автоматической инициализацией"""
     global _notification_manager
+    
+    # Если менеджер не инициализирован — пробуем инициализировать
     if _notification_manager is None:
-        raise RuntimeError("NotificationManager не инициализирован. Вызови init_notification_manager()")
+        try:
+            from bot.core import get_bot_instance
+            bot = get_bot_instance()
+            if bot and bot.application and bot.application.bot:
+                init_notification_manager(bot.application.bot)
+                logger.info("NotificationManager автоматически инициализирован из get_notification_manager()")
+            else:
+                raise RuntimeError("Не удалось получить экземпляр бота для инициализации NotificationManager")
+        except Exception as e:
+            logger.error(f"Ошибка автоматической инициализации NotificationManager: {e}")
+            raise RuntimeError(
+                "NotificationManager не инициализирован. "
+                "Убедитесь, что бот запущен и вызван init_notification_manager()"
+            )
+    
     return _notification_manager
 
 

@@ -43,14 +43,16 @@ class MonitoringDB:
                 )
                 ''')
                 
-                # Таблица алертов
+                # Таблица алертов (с учётом реальной структуры)
                 cursor.execute('''
                 CREATE TABLE IF NOT EXISTS alerts (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     alert_type TEXT NOT NULL,
                     title TEXT NOT NULL,
                     message TEXT,
+                    server_id TEXT,
                     severity TEXT,
+                    is_active INTEGER DEFAULT 1,
                     resolved BOOLEAN DEFAULT FALSE,
                     resolved_at DATETIME,
                     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -95,7 +97,7 @@ class MonitoringDB:
                 cursor.execute('CREATE INDEX IF NOT EXISTS idx_alerts_resolved ON alerts(resolved)')
                 cursor.execute('CREATE INDEX IF NOT EXISTS idx_alerts_created ON alerts(created_at)')
                 cursor.execute('CREATE INDEX IF NOT EXISTS idx_command_logs_user ON command_logs(user_id)')
-                cursor.execute('CREATE INDEX IF NOT EXISTS idx_site_checks_timestamp ON site_checks(timestamp)')
+                cursor.execute('CREATE INDEX IF NOT EXISTS idx_site_checks_checked_at ON site_checks(checked_at)')
                 
                 conn.commit()
                 
@@ -117,17 +119,17 @@ class MonitoringDB:
         except Exception as e:
             logger.error(f"Ошибка записи лога команды: {e}")
     
-    def add_alert(self, alert_type: str, title: str, message: str = "", severity: str = "warning"):
+    def add_alert(self, alert_type: str, title: str, message: str = "", severity: str = "warning", server_id: Optional[str] = None):
         """Добавить новый алерт"""
         try:
             with self._get_connection() as conn:
                 cursor = conn.cursor()
                 cursor.execute(
                     """
-                    INSERT INTO alerts (alert_type, title, message, severity, resolved) 
-                    VALUES (?, ?, ?, ?, 0)
+                    INSERT INTO alerts (alert_type, title, message, server_id, severity, is_active) 
+                    VALUES (?, ?, ?, ?, ?, 1)
                     """,
-                    (alert_type, title, message, severity)
+                    (alert_type, title, message, server_id, severity)
                 )
                 conn.commit()
                 return cursor.lastrowid
@@ -142,8 +144,8 @@ class MonitoringDB:
                 cursor = conn.cursor()
                 cursor.execute(
                     """
-                    SELECT id, alert_type, title, message, severity, resolved, 
-                           resolved_at, created_at
+                    SELECT id, alert_type, title, message, server_id, severity, 
+                           is_active, resolved, resolved_at, created_at
                     FROM alerts 
                     WHERE id = ?
                     """,
@@ -165,7 +167,7 @@ class MonitoringDB:
                 cursor.execute(
                     """
                     UPDATE alerts 
-                    SET resolved = 1, resolved_at = CURRENT_TIMESTAMP 
+                    SET resolved = 1, is_active = 0, resolved_at = CURRENT_TIMESTAMP 
                     WHERE id = ? AND resolved = 0
                     """,
                     (alert_id,)
@@ -190,7 +192,7 @@ class MonitoringDB:
                 cursor.execute(
                     """
                     UPDATE alerts 
-                    SET resolved = 1, resolved_at = CURRENT_TIMESTAMP 
+                    SET resolved = 1, is_active = 0, resolved_at = CURRENT_TIMESTAMP 
                     WHERE resolved = 0
                     """
                 )
@@ -209,9 +211,9 @@ class MonitoringDB:
                 cursor = conn.cursor()
                 cursor.execute(
                     """
-                    SELECT id, alert_type, title, message, severity, created_at 
+                    SELECT id, alert_type, title, message, server_id, severity, created_at 
                     FROM alerts 
-                    WHERE resolved = 0 
+                    WHERE resolved = 0 AND is_active = 1
                     ORDER BY created_at DESC 
                     LIMIT ?
                     """,
@@ -225,8 +227,9 @@ class MonitoringDB:
                         'alert_type': row[1],
                         'title': row[2],
                         'message': row[3],
-                        'severity': row[4],
-                        'created_at': row[5]
+                        'server_id': row[4],
+                        'severity': row[5],
+                        'created_at': row[6]
                     })
                 
                 return alerts
@@ -244,7 +247,7 @@ class MonitoringDB:
                 cursor.execute(
                     """
                     UPDATE alerts 
-                    SET resolved = 1, resolved_at = CURRENT_TIMESTAMP 
+                    SET resolved = 1, is_active = 0, resolved_at = CURRENT_TIMESTAMP 
                     WHERE created_at < ? AND resolved = 0
                     """,
                     (cutoff_date.strftime('%Y-%m-%d %H:%M:%S'),)
@@ -266,11 +269,11 @@ class MonitoringDB:
                 cursor = conn.cursor()
                 
                 # Удаляем старые проверки сайтов
-                cursor.execute("DELETE FROM site_checks WHERE timestamp < ?", (cutoff_str,))
+                cursor.execute("DELETE FROM site_checks WHERE checked_at < ?", (cutoff_str,))
                 site_deleted = cursor.rowcount
                 
                 # Удаляем старые проверки системы
-                cursor.execute("DELETE FROM system_checks WHERE timestamp < ?", (cutoff_str,))
+                cursor.execute("DELETE FROM system_checks WHERE checked_at < ?", (cutoff_str,))
                 system_deleted = cursor.rowcount
                 
                 # Помечаем старые алерты как решенные

@@ -207,7 +207,7 @@ class ErrorAnalyzer:
             cursor.execute('''
                 UPDATE errors
                 SET is_resolved = 1, resolved_at = CURRENT_TIMESTAMP
-                WHERE site_url = ? AND error_type = 'site_down' AND is_resolved = 0
+                WHERE site_url = ? AND is_resolved = 0
             ''', (site_url,))
 
             affected = cursor.rowcount
@@ -225,12 +225,6 @@ class ErrorAnalyzer:
     def resolve_error_by_server(self, server_id: str) -> bool:
         """
         Помечает все активные ошибки для данного сервера как решённые.
-
-        Args:
-            server_id: ID сервера
-
-        Returns:
-            True если успешно
         """
         try:
             conn = sqlite3.connect(str(self.db_path))
@@ -239,7 +233,7 @@ class ErrorAnalyzer:
             cursor.execute('''
                 UPDATE errors
                 SET is_resolved = 1, resolved_at = CURRENT_TIMESTAMP
-                WHERE server_id = ? AND error_type = 'connection_error' AND is_resolved = 0
+                WHERE server_id = ? AND is_resolved = 0
             ''', (server_id,))
 
             affected = cursor.rowcount
