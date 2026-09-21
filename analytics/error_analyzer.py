@@ -9,6 +9,7 @@ import logging
 from datetime import datetime, timedelta
 from typing import Dict, Any, List, Optional
 from pathlib import Path
+from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
 
@@ -95,6 +96,26 @@ class ErrorAnalyzer:
         ]
         key_string = '|'.join(str(f) for f in key_fields)
         return hashlib.md5(key_string.encode()).hexdigest()
+
+    def _extract_domain(self, url: str) -> str:
+        """
+        Извлечь домен из URL.
+
+        Args:
+            url: URL сайта (http://example.com или https://example.com/path)
+
+        Returns:
+            Домен (example.com)
+        """
+        if not url:
+            return ""
+        try:
+            parsed = urlparse(url)
+            domain = parsed.netloc or parsed.path.split('/')[0]
+            return domain
+        except Exception as e:
+            logger.error(f"Ошибка извлечения домена из {url}: {e}")
+            return ""
 
     def add_error(self, error_data: Dict[str, Any]) -> int:
         """
@@ -194,6 +215,9 @@ class ErrorAnalyzer:
         """
         Помечает все активные ошибки для данного сайта как решённые.
 
+        Ищет по домену, а не по полному URL — это позволяет
+        резолвить ошибки даже если URL изменился (http -> https).
+
         Args:
             site_url: URL сайта
 
@@ -201,21 +225,31 @@ class ErrorAnalyzer:
             True если успешно
         """
         try:
+            # Извлекаем домен из URL
+            domain = self._extract_domain(site_url)
+
+            if not domain:
+                logger.warning(f"Не удалось извлечь домен из URL: {site_url}")
+                return False
+
             conn = sqlite3.connect(str(self.db_path))
             cursor = conn.cursor()
 
+            # Ищем по домену (LIKE), чтобы поймать и http:// и https://
             cursor.execute('''
                 UPDATE errors
                 SET is_resolved = 1, resolved_at = CURRENT_TIMESTAMP
-                WHERE site_url = ? AND is_resolved = 0
-            ''', (site_url,))
+                WHERE site_url LIKE ? AND is_resolved = 0
+            ''', (f'%{domain}%',))
 
             affected = cursor.rowcount
             conn.commit()
             conn.close()
 
             if affected > 0:
-                logger.info(f"Помечено {affected} ошибок как решённых для сайта {site_url}")
+                logger.info(
+                    f"Помечено {affected} ошибок как решённых для домена {domain}"
+                )
             return True
 
         except Exception as e:
