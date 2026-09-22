@@ -26,7 +26,12 @@ from .help import help_command
 from .status import status_command
 from .sites import site_command
 from .version import version_command
-from .alerts import alerts_command
+from .alerts import (
+    alerts_command,
+    clear_all_alerts,
+    resolve_alert_callback,
+    show_alert_details
+)
 from .stats import stats_command
 from .logs import logs_command
 from .monitor import monitor_status_command, monitor_log_command
@@ -122,6 +127,14 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     # ===== АЛЕРТЫ =====
     elif callback_data == "alerts":
         await alerts_command(update, context)
+    elif callback_data == "alerts_clear_all":
+        await clear_all_alerts(update, context)
+    elif callback_data.startswith("alert_resolve_"):
+        alert_id = int(callback_data.replace("alert_resolve_", ""))
+        await resolve_alert_callback(update, context, alert_id)
+    elif callback_data.startswith("alert_details_"):
+        alert_id = int(callback_data.replace("alert_details_", ""))
+        await show_alert_details(update, context, alert_id)
 
     # ===== СТАТИСТИКА =====
     elif callback_data == "stats":
